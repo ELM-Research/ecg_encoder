@@ -109,17 +109,15 @@ class DecoderTransformer(nn.Module):
         temperature: float = 1.0,
         top_k: Optional[int] = None,
         do_sample: bool = False,
-        eos_id: Optional[int] = None,
         return_new_only: bool = False,
         return_logits: bool = False,
     ) -> torch.Tensor:
         out = tgt_ids
         start_len = out.size(1)
-        finished = torch.zeros(out.size(0), dtype=torch.bool, device=out.device)
         all_logits = [] if return_logits else None
 
         for _ in range(max_new_tokens):
-            if out.size(1) >= self.cfg.max_seq_len or finished.all():
+            if out.size(1) >= self.cfg.max_seq_len:
                 break
 
             key_padding_mask = self._make_key_padding_mask(out)
@@ -145,16 +143,13 @@ class DecoderTransformer(nn.Module):
             else:
                 next_id = torch.argmax(logits, dim=-1, keepdim=True)
 
-            if eos_id is not None:
-                next_id = torch.where(finished.unsqueeze(1), torch.full_like(next_id, eos_id), next_id)
-                finished |= next_id.squeeze(1).eq(eos_id)
-
             out = torch.cat([out, next_id], dim=1)
 
         tokens = out[:, start_len:] if return_new_only else out
+        out_logits = torch.stack(all_logits, dim=1)
 
         if return_logits:
-            return tokens, torch.stack(all_logits, dim=1)
+            return tokens, out_logits
         return tokens
 
     def resize_embeddings(self, new_vocab_size: int):
@@ -164,14 +159,17 @@ class DecoderTransformer(nn.Module):
         if new_vocab_size == old_vocab_size:
             return
 
+        dtype = self.token_emb.weight.dtype
         old_token_emb = self.token_emb
-        self.token_emb = nn.Embedding(new_vocab_size, self.cfg.d_model, padding_idx=self.cfg.pad_id)
+        self.token_emb = nn.Embedding(new_vocab_size, self.cfg.d_model,
+                                      padding_idx=self.cfg.pad_id, dtype = dtype)
         nn.init.normal_(self.token_emb.weight, mean=0.0, std=0.02)
         with torch.no_grad():
             self.token_emb.weight[:old_vocab_size] = old_token_emb.weight
 
         old_lm_head = self.lm_head
-        self.lm_head = nn.Linear(self.cfg.d_model, new_vocab_size, bias=False)
+        self.lm_head = nn.Linear(self.cfg.d_model, new_vocab_size,
+                                 bias=False, dtype= dtype)
         nn.init.xavier_uniform_(self.lm_head.weight)
         with torch.no_grad():
             self.lm_head.weight[:old_vocab_size] = old_lm_head.weight
