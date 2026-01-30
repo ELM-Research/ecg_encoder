@@ -2,6 +2,7 @@ import gc
 import torch
 
 from optimizers.scheduler import get_optimizer
+from optimizers.ema import EMA
 
 from dataloaders.build_dataloader import BuildDataLoader
 
@@ -55,15 +56,16 @@ def main():
         if args.dev:
             gpu_setup.print_model_device(nn, f"{args.neural_network}")
         optimizer = get_optimizer(args, nn)
+        ema = EMA(nn, decay=args.ema_decay) if getattr(args, "ema", False) else None
         if args.dev:
             checkpoint_manager = None
         else:
             checkpoint_manager = CheckpointManager(run_folder, args)
         for epoch in range(args.epochs):
-            train_result = run_train(nn, optimizer, dataloader, epoch, args, checkpoint_manager)
+            train_result = run_train(nn, optimizer, dataloader, epoch, args, checkpoint_manager, ema=ema)
             if checkpoint_manager and is_main():
                 if checkpoint_manager.save_epoch(train_result["average_loss"]):
-                    checkpoint_manager.save_checkpoint(nn, optimizer, epoch, -1, is_best=True, prefix="epoch_")
+                    checkpoint_manager.save_checkpoint(nn, optimizer, epoch, -1, is_best=True, prefix="epoch_", ema=ema)
                 if checkpoint_manager.stop_early():
                     if is_main():
                         print(f"Early stopping at epoch {epoch}")

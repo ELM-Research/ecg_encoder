@@ -12,6 +12,7 @@ def run_train(
     epoch,
     args,
     checkpoint_manager=None,
+    ema=None,
 ):
     if getattr(args, "distributed", False) and hasattr(getattr(dataloader, "sampler", None), "set_epoch"):
         dataloader.sampler.set_epoch(epoch)
@@ -37,11 +38,13 @@ def run_train(
         total_steps += 1
         loss.backward()
         optimizer.step_and_update_lr()
+        if ema is not None:
+            ema.update()
         if getattr(args, "wandb", False) and is_main():
             wandb.log({"train/step_loss": loss.item(), "epoch": epoch})
         if checkpoint_manager and is_main():
             if checkpoint_manager.save_step(step, total_steps_per_epoch):
-                checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_")
+                checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_", ema=ema)
         if train_dev_break(getattr(args, "dev", False), batch, loss.item()):
             break
         # if step > 4000:

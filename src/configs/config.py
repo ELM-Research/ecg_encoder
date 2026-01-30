@@ -111,4 +111,6 @@ def get_args(mode: Mode) -> argparse.Namespace:
             help="Torch compile the model (should really only be used during pretraining or large finetuning.)",
         )
         parser.add_argument("--bfloat_16", action = "store_true", default = None)
+        parser.add_argument("--ema", action="store_true", default=None, help="Enable exponential moving average of model parameters")
+        parser.add_argument("--ema_decay", type=float, default=0.999, help="EMA decay rate")
     return parser.parse_args()
