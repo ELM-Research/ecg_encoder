@@ -93,16 +93,24 @@ class BuildNN:
 
     def load_nn_checkpoint(self, nn_components, data_representation):
         ckpt = torch.load(self.args.nn_ckpt, map_location="cpu", weights_only=False)
+
+        use_ema = getattr(self.args, "ema", False) and "ema_state_dict" in ckpt
+        if use_ema:
+            state = ckpt["ema_state_dict"]
+            if is_main():
+                print("Loading EMA weights from checkpoint")
+        else:
+            state = ckpt["model_state_dict"]
+
         if "trans_discrete" in self.args.neural_network:
-            old_state = ckpt["model_state_dict"]
-            old_vocab = old_state["token_emb.weight"].shape[0]
+            old_vocab = state["token_emb.weight"].shape[0]
             new_vocab = data_representation.vocab_size
-            nn_components["neural_network"].load_state_dict(old_state, strict=True)
+            nn_components["neural_network"].load_state_dict(state, strict=True)
             if new_vocab > old_vocab:
                 nn_components["neural_network"].resize_embeddings(new_vocab)
                 if is_main():
                     print(f"Resized vocab from {old_vocab} to {new_vocab}")
         else:
-            nn_components["neural_network"].load_state_dict(ckpt["model_state_dict"], strict=False)
+            nn_components["neural_network"].load_state_dict(state, strict=False)
         if is_main():
             print(f"Loaded NN checkpoint from {self.args.nn_ckpt}")

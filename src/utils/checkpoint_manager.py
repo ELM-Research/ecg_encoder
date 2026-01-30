@@ -13,7 +13,7 @@ class CheckpointManager:
         if is_main():
             os.makedirs(self.checkpoint_dir, exist_ok=True)
 
-    def save_checkpoint(self, model, optimizer, epoch, step, is_best=False, prefix=""):
+    def save_checkpoint(self, model, optimizer, epoch, step, is_best=False, prefix="", ema=None):
 
         filename = f"{prefix}epoch_{epoch}_step_{step}.pt"
         filepath = os.path.join(self.checkpoint_dir, filename)
@@ -29,6 +29,8 @@ class CheckpointManager:
             "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer.optimizer.state_dict(),
         }
+        if ema is not None:
+            checkpoint["ema_state_dict"] = ema.state_dict()
         torch.save(checkpoint, filepath)
         if is_best:
             best_path = os.path.join(self.checkpoint_dir, f"{prefix}best.pt")

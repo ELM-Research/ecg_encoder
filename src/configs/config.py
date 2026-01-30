@@ -88,6 +88,8 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--device", type=str, default=None, help="Device (cuda/cpu)")
         parser.add_argument("--distributed", action="store_true", default=None, help="Enable distributed training")
         parser.add_argument("--nn_ckpt", type=str, default=None, help="Path to the NN checkpoint")
+        parser.add_argument("--ema", action="store_true", default=None)
+        parser.add_argument("--ema_decay", type=float, default=0.999)
 
     if "train" in mode:
         parser.add_argument("--epochs", type=int, default=1, help="Number of epochs")
