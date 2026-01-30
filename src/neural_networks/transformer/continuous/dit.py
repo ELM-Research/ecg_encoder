@@ -16,7 +16,6 @@ class DiTConfig:
     num_layers: int = 12
     dropout: float = 0.1
     max_seq_len: int = 2500
-    num_classes: Optional[int] = None
     loss_type: Literal["ddpm", "rectified_flow"] = "rectified_flow"
     num_steps: int = 50
     beta_start: float = 1e-4
@@ -31,7 +30,7 @@ class DiTOutput:
 
 def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> torch.Tensor:
     half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(half, device=t.device) / half)
+    freqs = torch.exp(-math.log(max_period) * torch.arange(half, dtype=torch.float32, device=t.device) / half)
     args = t[:, None].float() * freqs[None]
     embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     if dim % 2:
@@ -39,24 +38,11 @@ def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> to
     return embedding
 
 
-class AdaLN(nn.Module):
-    def __init__(self, d_model: int):
-        super().__init__()
-        self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
-        self.proj = nn.Linear(d_model, 2 * d_model)
-        nn.init.zeros_(self.proj.weight)
-        nn.init.zeros_(self.proj.bias)
-
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        scale, shift = self.proj(cond).chunk(2, dim=-1)
-        return self.norm(x) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-
 class DiTBlock(nn.Module):
     def __init__(self, d_model: int, n_heads: int, dim_ff: int, dropout: float):
         super().__init__()
-        self.adaLN1 = AdaLN(d_model)
-        self.adaLN2 = AdaLN(d_model)
+        self.norm1 = nn.LayerNorm(d_model, elementwise_affine=False)
+        self.norm2 = nn.LayerNorm(d_model, elementwise_affine=False)
         self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
         self.ff = nn.Sequential(
             nn.Linear(d_model, dim_ff),
@@ -64,16 +50,23 @@ class DiTBlock(nn.Module):
             nn.Linear(dim_ff, d_model),
             nn.Dropout(dropout),
         )
-        self.dropout = nn.Dropout(dropout)
-        self.gate_attn = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.gate_ff = nn.Parameter(torch.zeros(1, 1, d_model))
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(d_model, 6 * d_model),
+        )
+        nn.init.zeros_(self.adaLN_modulation[-1].weight)
+        nn.init.zeros_(self.adaLN_modulation[-1].bias)
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        y = self.adaLN1(x, cond)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=-1)
+        
+        y = self.norm1(x) * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
         y, _ = self.self_attn(y, y, y, key_padding_mask=key_padding_mask, need_weights=False)
-        x = x + self.gate_attn * self.dropout(y)
-        y = self.adaLN2(x, cond)
-        x = x + self.gate_ff * self.ff(y)
+        x = x + gate_msa.unsqueeze(1) * y
+        
+        y = self.norm2(x) * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
+        x = x + gate_mlp.unsqueeze(1) * self.ff(y)
+        
         return x
 
 
@@ -85,17 +78,28 @@ class DiT(nn.Module):
         self.pos_emb = nn.Embedding(cfg.max_seq_len, cfg.d_model)
         self.time_mlp = nn.Sequential(
             nn.Linear(cfg.d_model, cfg.d_model * 4),
-            nn.GELU(),
+            nn.SiLU(),
             nn.Linear(cfg.d_model * 4, cfg.d_model),
         )
         self.layers = nn.ModuleList([DiTBlock(cfg.d_model, cfg.n_heads, cfg.dim_ff, cfg.dropout) for _ in range(cfg.num_layers)])
-        self.final_norm = nn.LayerNorm(cfg.d_model)
+        
+        self.final_norm = nn.LayerNorm(cfg.d_model, elementwise_affine=False)
+        self.final_adaLN = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(cfg.d_model, 2 * cfg.d_model),
+        )
         self.output_proj = nn.Linear(cfg.d_model, cfg.input_dim)
+        
+        self._init_weights()
+
+    def _init_weights(self):
+        nn.init.zeros_(self.final_adaLN[-1].weight)
+        nn.init.zeros_(self.final_adaLN[-1].bias)
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
-
-        if cfg.loss_type == "ddpm":
-            betas = torch.linspace(cfg.beta_start, cfg.beta_end, cfg.num_steps)
+        
+        if self.cfg.loss_type == "ddpm":
+            betas = torch.linspace(self.cfg.beta_start, self.cfg.beta_end, self.cfg.num_steps)
             alphas = 1.0 - betas
             alphas_cumprod = torch.cumprod(alphas, dim=0)
             self.register_buffer("betas", betas)
@@ -109,7 +113,10 @@ class DiT(nn.Module):
         h = self.input_proj(xt) + self.pos_emb(pos)
         for layer in self.layers:
             h = layer(h, cond, key_padding_mask=padding_mask)
-        h = self.final_norm(h)
+        
+        shift, scale = self.final_adaLN(cond).chunk(2, dim=-1)
+        h = self.final_norm(h) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+        
         return self.output_proj(h)
 
     def _compute_loss(self, pred: torch.Tensor, target: torch.Tensor, padding_mask: Optional[torch.Tensor]) -> torch.Tensor:
@@ -118,12 +125,8 @@ class DiT(nn.Module):
             return (F.mse_loss(pred, target, reduction="none") * mask).sum() / mask.sum()
         return F.mse_loss(pred, target)
 
-    def forward(
-        self,
-        signal: torch.Tensor,
-        padding_mask: Optional[torch.Tensor] = None,
-    ) -> DiTOutput:
-        x1 = signal.transpose(1, 2)  # (B, C, L) -> (B, L, C)
+    def forward(self, signal: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> DiTOutput:
+        x1 = signal.transpose(1, 2)
         bsz = x1.shape[0]
 
         if self.cfg.loss_type == "rectified_flow":
@@ -147,9 +150,7 @@ class DiT(nn.Module):
         return DiTOutput(loss=loss, prediction=pred.transpose(1, 2))
 
     @torch.inference_mode()
-    def sample(
-        self, shape: tuple, device: torch.device, num_steps: Optional[int] = None, padding_mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def sample(self, shape: tuple, device: torch.device, num_steps: Optional[int] = None, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         num_steps = num_steps or self.cfg.num_steps
         bsz, c, seq_len = shape
         x = torch.randn(bsz, seq_len, c, device=device)
