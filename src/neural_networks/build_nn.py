@@ -94,7 +94,6 @@ class BuildNN:
     def load_nn_checkpoint(self, nn_components, data_representation):
         ckpt = torch.load(self.args.nn_ckpt, map_location="cpu", weights_only=False)
 
-        # Use EMA weights when available and requested
         use_ema = getattr(self.args, "ema", False) and "ema_state_dict" in ckpt
         if use_ema:
             state = ckpt["ema_state_dict"]
