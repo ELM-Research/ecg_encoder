@@ -12,8 +12,15 @@ src/pretrain_encoder.py \
 --augment \
 --bpe_symbolic_len 4096 \
 --epochs 10 \
---torch_compile \
+--optimizer adamw \
+--lr 3e-4 \
+--lr_schedule inv_sqrt \
+--beta1 0.9 \
+--beta2 0.95 \
+--weight_decay 0.1 \
 --warmup 2500 \
+--grad_clip 1.0 \
+--torch_compile \
 --bfloat_16 \
 --wandb
 
@@ -31,8 +38,15 @@ src/pretrain_encoder.py \
 --augment \
 --bpe_symbolic_len 4096 \
 --epochs 10 \
---torch_compile \
+--optimizer adamw \
+--lr 3e-4 \
+--lr_schedule inv_sqrt \
+--beta1 0.9 \
+--beta2 0.95 \
+--weight_decay 0.1 \
 --warmup 2500 \
+--grad_clip 1.0 \
+--torch_compile \
 --wandb
 
 
@@ -49,8 +63,13 @@ src/pretrain_encoder.py \
 # --ref_global_bs 512 \
 # --augment \
 # --epochs 10 \
-# --warmup 2500 \
+# --optimizer adamw \
+# --lr 1e-4 \
+# --lr_schedule constant \
+# --beta1 0.9 \
+# --beta2 0.999 \
 # --weight_decay 1e-4 \
+# --warmup 2500 \
 # --grad_clip 1.0 \
 # --ema \
 # --torch_compile \
@@ -69,8 +88,13 @@ src/pretrain_encoder.py \
 # --ref_global_bs 512 \
 # --augment \
 # --epochs 10 \
-# --warmup 2500 \
+# --optimizer adamw \
+# --lr 1e-4 \
+# --lr_schedule constant \
+# --beta1 0.9 \
+# --beta2 0.999 \
 # --weight_decay 1e-4 \
+# --warmup 2500 \
 # --grad_clip 1.0 \
 # --ema \
 # --torch_compile \
@@ -89,8 +113,13 @@ src/pretrain_encoder.py \
 # --ref_global_bs 512 \
 # --augment \
 # --epochs 2 \
-# --warmup 500 \
+# --optimizer adamw \
+# --lr 1e-4 \
+# --lr_schedule constant \
+# --beta1 0.9 \
+# --beta2 0.999 \
 # --weight_decay 1e-4 \
+# --warmup 500 \
 # --grad_clip 1.0 \
 # --ema \
 # --wandb
@@ -110,5 +139,12 @@ src/pretrain_encoder.py \
 # --ref_global_bs 512 \
 # --augment \
 # --epochs 2 \
+# --optimizer adamw \
+# --lr 1.5e-4 \
+# --lr_schedule cosine \
+# --min_lr_ratio 0.1 \
+# --beta1 0.9 \
+# --beta2 0.95 \
+# --weight_decay 0.05 \
 # --warmup 500 \
 # --wandb
