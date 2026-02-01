@@ -140,7 +140,7 @@ class ContinuousTransformerOptimizer(BaseOptimizer):
         super().__init__(model, args)
 
     def _optimizer_cls(self):
-        return Adam
+        return AdamW
 
     def _base_lr(self):
         return getattr(self.args, "lr", 1e-4) * self.scale

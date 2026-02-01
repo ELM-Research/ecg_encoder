@@ -105,6 +105,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--warmup", type=int, default=2000, help="Warmup steps")
         parser.add_argument("--ref_global_bs", type=int, default=None)
         parser.add_argument("--grad_accum_steps", type=int, default=1)
+        parser.add_argument("--grad_clip", type=float, default=0.0, help="Max gradient norm for clipping (0 to disable)")
         parser.add_argument("--scale_wd", type=str, default="none", choices=["none", "inv_sqrt", "inv_linear"])
         parser.add_argument(
             "--torch_compile",

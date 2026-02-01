@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 uv run torchrun --standalone --nproc_per_node=8 \
 src/pretrain_encoder.py \
 --data mimic_iv ptb_xl code15 csn cpsc \
@@ -17,7 +17,7 @@ src/pretrain_encoder.py \
 --bfloat_16 \
 --wandb
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 uv run torchrun --standalone --nproc_per_node=8 \
 src/pretrain_encoder.py \
 --data mimic_iv ptb_xl code15 csn cpsc \
@@ -36,7 +36,7 @@ src/pretrain_encoder.py \
 --wandb
 
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 # uv run torchrun --standalone --nproc_per_node=8 \
 # src/pretrain_encoder.py \
 # --data mimic_iv ptb_xl code15 csn cpsc \
@@ -50,10 +50,13 @@ src/pretrain_encoder.py \
 # --augment \
 # --epochs 10 \
 # --warmup 2500 \
+# --weight_decay 1e-4 \
+# --grad_clip 1.0 \
+# --ema \
 # --torch_compile \
 # --wandb
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 # uv run torchrun --standalone --nproc_per_node=8 \
 # src/pretrain_encoder.py \
 # --data mimic_iv ptb_xl code15 csn cpsc \
@@ -67,10 +70,13 @@ src/pretrain_encoder.py \
 # --augment \
 # --epochs 10 \
 # --warmup 2500 \
+# --weight_decay 1e-4 \
+# --grad_clip 1.0 \
+# --ema \
 # --torch_compile \
 # --wandb
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 # uv run torchrun --standalone --nproc_per_node=8 \
 # src/pretrain_encoder.py \
 # --data mimic_iv ptb_xl code15 csn cpsc \
@@ -84,11 +90,14 @@ src/pretrain_encoder.py \
 # --augment \
 # --epochs 2 \
 # --warmup 500 \
+# --weight_decay 1e-4 \
+# --grad_clip 1.0 \
+# --ema \
 # --wandb
 
 
 
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8 \
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 # uv run torchrun --standalone --nproc_per_node=8 \
 # src/pretrain_encoder.py \
 # --data mimic_iv ptb_xl code15 csn cpsc \
