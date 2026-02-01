@@ -102,9 +102,12 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--beta1", type=float, default=0.9, help="Beta1 for optimizer")
         parser.add_argument("--beta2", type=float, default=0.95, help="Beta2 for optimizer")
         parser.add_argument("--eps", type=float, default=1e-8, help="Epsilon for optimizer")
+        parser.add_argument("--lr_schedule", type=str, default="constant", choices=["constant", "cosine", "inv_sqrt"], help="LR schedule after warmup")
+        parser.add_argument("--min_lr_ratio", type=float, default=0.1, help="Min LR as fraction of peak LR (for cosine schedule)")
         parser.add_argument("--warmup", type=int, default=2000, help="Warmup steps")
         parser.add_argument("--ref_global_bs", type=int, default=None)
         parser.add_argument("--grad_accum_steps", type=int, default=1)
+        parser.add_argument("--grad_clip", type=float, default=0.0, help="Max gradient norm for clipping (0 to disable)")
         parser.add_argument("--scale_wd", type=str, default="none", choices=["none", "inv_sqrt", "inv_linear"])
         parser.add_argument(
             "--torch_compile",
