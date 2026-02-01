@@ -185,6 +185,40 @@ class DiT(nn.Module):
 
         return x.transpose(1, 2)
 
+    @torch.inference_mode()
+    def reconstruct(self, signal: torch.Tensor, t_value: float = 0.5, padding_mask: Optional[torch.Tensor] = None) -> dict[str, torch.Tensor]:
+        """Given a clean signal, noise it to timestep t, then predict the clean signal back.
+
+        Returns dict with keys: 'x1_pred', 'xt', 't' (all in B,C,L format except t which is scalar).
+        """
+        x1 = signal.transpose(1, 2)  # (B, C, L) -> (B, L, C)
+        bsz = x1.shape[0]
+
+        if self.cfg.loss_type == "rectified_flow":
+            x0 = torch.randn_like(x1)
+            t = torch.full((bsz,), t_value, device=x1.device)
+            t_exp = t.view(bsz, 1, 1)
+            xt = (1 - t_exp) * x0 + t_exp * x1
+            pred = self._forward_net(xt, t, padding_mask)
+            x1_pred = xt + (1 - t_exp) * pred
+        elif self.cfg.loss_type == "ddpm":
+            t_int = int(t_value * self.cfg.num_steps)
+            t_int = max(0, min(t_int, self.cfg.num_steps - 1))
+            t_idx = torch.full((bsz,), t_int, device=x1.device, dtype=torch.long)
+            t = t_idx.float() / self.cfg.num_steps
+            noise = torch.randn_like(x1)
+            sqrt_alpha = self.alphas_cumprod[t_idx].sqrt().view(bsz, 1, 1)
+            sqrt_one_minus_alpha = (1 - self.alphas_cumprod[t_idx]).sqrt().view(bsz, 1, 1)
+            xt = sqrt_alpha * x1 + sqrt_one_minus_alpha * noise
+            pred = self._forward_net(xt, t, padding_mask)
+            x1_pred = (xt - sqrt_one_minus_alpha * pred) / sqrt_alpha
+
+        return {
+            "x1_pred": x1_pred.transpose(1, 2),
+            "xt": xt.transpose(1, 2),
+            "t": t_value,
+        }
+
     def get_features(self, signal: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         x = signal.transpose(1, 2)
         bsz, seq_len, _ = x.shape
