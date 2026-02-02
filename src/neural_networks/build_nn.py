@@ -69,7 +69,14 @@ class BuildNN:
                 from neural_networks.transformer.continuous.dit import DiTConfig, DiT
 
                 num_steps = {"rectified_flow": 50, "ddpm": 1000}[self.args.objective]
-                cfg = DiTConfig(loss_type=self.args.objective, num_steps=num_steps)
+                cond_type = getattr(self.args, "cond_type", None)
+                cfg = DiTConfig(
+                    loss_type=self.args.objective,
+                    num_steps=num_steps,
+                    cond_type=cond_type,
+                    cond_drop_prob=getattr(self.args, "cond_drop_prob", 0.1),
+                    text_max_len=getattr(self.args, "text_max_len", 512),
+                )
                 model = DiT(cfg)
         return {"neural_network": model}
 
