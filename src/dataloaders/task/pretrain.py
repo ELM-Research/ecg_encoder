@@ -8,20 +8,22 @@ class Pretrain:
 
     def __call__(self, transformed_data):
         inputs = np.asarray(transformed_data["transformed_data"])
+        cond = transformed_data.get("cond")
         if self.args.data_representation == "bpe_symbolic":
             return self.bpe_symbolic(inputs)
         elif self.args.data_representation == "signal":
-            return self.signal(inputs,)
+            return self.signal(inputs, cond)
 
-    def signal(self, inputs,):
+    def signal(self, inputs, cond=None):
         if self.args.objective == "autoregressive":
             return {
                 "signal": inputs,
             }
         elif self.args.objective in ("rectified_flow", "ddpm"):
-            return {
-                "signal": inputs,
-            }
+            out = {"signal": inputs}
+            if cond is not None:
+                out["cond"] = cond
+            return out
         elif self.args.objective == "mae":
             # Each lead is a patch and we mask out 75% of them (9 leads)
             num_masked = int(self.args.num_patches * 0.75)
