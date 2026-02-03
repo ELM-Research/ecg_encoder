@@ -23,6 +23,9 @@ RUNS_FOLDER = "src/runs"
 
 DATA_DIR = "../data"
 
+### ECG Lead Order (standard 12-lead)
+PTB_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+
 
 ### Models
 
