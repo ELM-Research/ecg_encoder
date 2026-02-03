@@ -1,3 +1,5 @@
+import torch
+import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
@@ -56,6 +58,67 @@ def compute_fid(real_features: np.ndarray, gen_features: np.ndarray) -> float:
     mu1, sigma1 = real_features.mean(axis=0), np.cov(real_features, rowvar=False)
     mu2, sigma2 = gen_features.mean(axis=0), np.cov(gen_features, rowvar=False)
     return frechet_distance(mu1, sigma1, mu2, sigma2)
+
+
+def compute_ssim_1d(pred: torch.Tensor, target: torch.Tensor, window_size: int = 11) -> torch.Tensor:
+    """Compute SSIM for 1D signals per-lead.
+
+    Args:
+        pred: (B, C, T) predicted signals in [0, 1].
+        target: (B, C, T) target signals in [0, 1].
+        window_size: size of the 1D Gaussian window.
+
+    Returns:
+        (B, C) SSIM per sample per lead.
+    """
+    C = pred.shape[1]
+    sigma = 1.5
+    coords = torch.arange(window_size, dtype=pred.dtype, device=pred.device) - window_size // 2
+    gauss = torch.exp(-coords ** 2 / (2 * sigma ** 2))
+    gauss = gauss / gauss.sum()
+    kernel = gauss.view(1, 1, -1).expand(C, -1, -1)
+    pad = window_size // 2
+
+    mu_x = F.conv1d(pred, kernel, padding=pad, groups=C)
+    mu_y = F.conv1d(target, kernel, padding=pad, groups=C)
+    mu_x_sq = mu_x ** 2
+    mu_y_sq = mu_y ** 2
+    mu_xy = mu_x * mu_y
+
+    sigma_x_sq = F.conv1d(pred ** 2, kernel, padding=pad, groups=C) - mu_x_sq
+    sigma_y_sq = F.conv1d(target ** 2, kernel, padding=pad, groups=C) - mu_y_sq
+    sigma_xy = F.conv1d(pred * target, kernel, padding=pad, groups=C) - mu_xy
+
+    C1 = (0.01) ** 2
+    C2 = (0.03) ** 2
+    ssim_map = ((2 * mu_xy + C1) * (2 * sigma_xy + C2)) / (
+        (mu_x_sq + mu_y_sq + C1) * (sigma_x_sq + sigma_y_sq + C2)
+    )
+    return ssim_map.mean(dim=2)  # (B, C)
+
+
+def ssim_window_size(sf: int) -> int:
+    """Derive an odd SSIM window size that spans ~44 ms (11 samples at 250 Hz)."""
+    ws = int(11 * sf / 250)
+    return ws | 1  # ensure odd
+
+
+def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor, sf: int = 250) -> dict[str, torch.Tensor]:
+    """Compute per-lead reconstruction metrics between predicted and target signals.
+
+    Args:
+        pred: (B, C, T) predicted signals in [0, 1].
+        target: (B, C, T) target signals in [0, 1].
+        sf: sampling frequency in Hz (used to scale the SSIM window).
+
+    Returns:
+        dict with keys 'mse', 'mae', 'psnr', 'ssim', each of shape (B, C).
+    """
+    mse = (pred - target).pow(2).mean(dim=2)
+    mae = (pred - target).abs().mean(dim=2)
+    psnr = -10.0 * torch.log10(mse.clamp(min=1e-10))
+    ssim = compute_ssim_1d(pred, target, window_size=ssim_window_size(sf))
+    return {"mse": mse, "mae": mae, "psnr": psnr, "ssim": ssim}
 
 
 def compute_mmd(real_features: np.ndarray, gen_features: np.ndarray, gamma: float | None = None) -> float:

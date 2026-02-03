@@ -49,6 +49,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
             "--bpe_symbolic_len", type=int, default=2048, help="Please choose the bpe symbolic len for the bpe_symbolic data representation."
         )
         parser.add_argument("--segment_len", type=int, default=2500, help="ECG Segment Length")
+        parser.add_argument("--sf", type=int, default=250, help="Sampling frequency in Hz")
         parser.add_argument(
             "--bpe_tokenizer_path",
             type=str,
