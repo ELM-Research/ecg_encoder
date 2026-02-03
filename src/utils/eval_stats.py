@@ -29,3 +29,55 @@ def aggregate_metrics(all_metrics):
         values = [m[k] for m in all_metrics]
         results[k] = {"mean": float(np.mean(values)), "std": float(np.std(values)), "values": values}
     return results
+
+
+def frechet_distance(mu1: np.ndarray, sigma1: np.ndarray, mu2: np.ndarray, sigma2: np.ndarray) -> float:
+    """Compute Fréchet Distance between two multivariate Gaussians N(mu1, sigma1) and N(mu2, sigma2).
+
+    FD = ||mu1 - mu2||^2 + Tr(sigma1 + sigma2 - 2 * sqrt(sigma1 @ sigma2))
+    """
+    from scipy.linalg import sqrtm
+
+    diff = mu1 - mu2
+    covmean = sqrtm(sigma1 @ sigma2)
+    # sqrtm can return complex values due to numerical error
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
+    return float(diff @ diff + np.trace(sigma1 + sigma2 - 2 * covmean))
+
+
+def compute_fid(real_features: np.ndarray, gen_features: np.ndarray) -> float:
+    """Compute FID between real and generated feature sets.
+
+    Args:
+        real_features: (N, D) array of features from real samples.
+        gen_features: (M, D) array of features from generated samples.
+    """
+    mu1, sigma1 = real_features.mean(axis=0), np.cov(real_features, rowvar=False)
+    mu2, sigma2 = gen_features.mean(axis=0), np.cov(gen_features, rowvar=False)
+    return frechet_distance(mu1, sigma1, mu2, sigma2)
+
+
+def compute_mmd(real_features: np.ndarray, gen_features: np.ndarray, gamma: float | None = None) -> float:
+    """Compute MMD with RBF kernel between real and generated feature sets.
+
+    MMD^2 = E[k(x,x')] + E[k(y,y')] - 2*E[k(x,y)]
+    where k is the RBF kernel: k(a,b) = exp(-gamma * ||a-b||^2)
+
+    Args:
+        real_features: (N, D) array of features from real samples.
+        gen_features: (M, D) array of features from generated samples.
+        gamma: RBF bandwidth. If None, uses 1 / D (median heuristic alternative).
+    """
+    if gamma is None:
+        gamma = 1.0 / real_features.shape[1]
+
+    def rbf(x, y):
+        # (N, 1, D) - (1, M, D) -> (N, M)
+        dists_sq = ((x[:, None, :] - y[None, :, :]) ** 2).sum(axis=-1)
+        return np.exp(-gamma * dists_sq)
+
+    xx = rbf(real_features, real_features).mean()
+    yy = rbf(gen_features, gen_features).mean()
+    xy = rbf(real_features, gen_features).mean()
+    return float(xx + yy - 2 * xy)
