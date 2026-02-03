@@ -63,5 +63,7 @@ def eval_reconstruction(nn, dataloader, args):
         if show_progress:
             g = {m: per_lead[m].mean().item() for m in METRIC_NAMES}
             print(f"  t={t} — MSE: {g['mse']:.6f} | MAE: {g['mae']:.6f} | PSNR: {g['psnr']:.2f} dB | SSIM: {g['ssim']:.4f}")
-
+            print(f"    Per-lead:")
+            for i, lead in enumerate(PTB_ORDER):
+                print(f"      {lead:>5}: MSE={per_lead['mse'][i]:.6f} | MAE={per_lead['mae'][i]:.6f} | PSNR={per_lead['psnr'][i]:.2f} | SSIM={per_lead['ssim'][i]:.4f}")
     return eval_dict
