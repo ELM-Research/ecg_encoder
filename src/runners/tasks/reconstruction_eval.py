@@ -35,7 +35,7 @@ def eval_reconstruction(nn, dataloader, args):
                     out = nn.reconstruct(signal, t_value=t)
                     x1_pred = out["x1_pred"]  # (B, C, T)
 
-                    metrics = compute_reconstruction_metrics(x1_pred, signal)
+                    metrics = compute_reconstruction_metrics(x1_pred, signal, sf=args.sf)
                     for m in METRIC_NAMES:
                         sums[t][m] += metrics[m].sum(dim=0)  # (C,)
                     n_samples[t] += signal.shape[0]

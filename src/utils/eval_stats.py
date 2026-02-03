@@ -97,12 +97,19 @@ def compute_ssim_1d(pred: torch.Tensor, target: torch.Tensor, window_size: int =
     return ssim_map.mean(dim=2)  # (B, C)
 
 
-def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict[str, torch.Tensor]:
+def ssim_window_size(sf: int) -> int:
+    """Derive an odd SSIM window size that spans ~44 ms (11 samples at 250 Hz)."""
+    ws = int(11 * sf / 250)
+    return ws | 1  # ensure odd
+
+
+def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor, sf: int = 250) -> dict[str, torch.Tensor]:
     """Compute per-lead reconstruction metrics between predicted and target signals.
 
     Args:
         pred: (B, C, T) predicted signals in [0, 1].
         target: (B, C, T) target signals in [0, 1].
+        sf: sampling frequency in Hz (used to scale the SSIM window).
 
     Returns:
         dict with keys 'mse', 'mae', 'psnr', 'ssim', each of shape (B, C).
@@ -110,7 +117,7 @@ def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor) -> 
     mse = (pred - target).pow(2).mean(dim=2)
     mae = (pred - target).abs().mean(dim=2)
     psnr = -10.0 * torch.log10(mse.clamp(min=1e-10))
-    ssim = compute_ssim_1d(pred, target)
+    ssim = compute_ssim_1d(pred, target, window_size=ssim_window_size(sf))
     return {"mse": mse, "mae": mae, "psnr": psnr, "ssim": ssim}
 
 
