@@ -11,7 +11,8 @@ def get_args(mode: Mode) -> argparse.Namespace:
     parser.add_argument("--dev", action="store_true", default=None, help="Development mode")
 
     if mode in {"pretrain", "downstream_train", "downstream_eval"}:
-        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "classification", "translation", "forecasting"])
+        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "classification", "translation", 
+                                                                       "forecasting", "generation", "reconstruction"])
         parser.add_argument("--forecast_ratio", type=float, default=0.5, help="Please choose the percentage you want to forecast")
         parser.add_argument(
             "--data",
@@ -82,14 +83,6 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--add_task_head", action="store_true", default=None, help="Adds task head")
         parser.add_argument("--ckpt_has_head", action="store_true", default=None, help="indicates head is already trained")
 
-        parser.add_argument("--cond_type", type=str, default=None, choices=["label", "text", "lead"],
-                            help="Condition type for conditional diffusion (None = unconditional)")
-        parser.add_argument("--cond_label_name", type=str, default=None, help="Which label key to condition on (e.g. v_pacing)")
-        parser.add_argument("--cond_lead_index", type=int, default=1, help="Lead index for lead conditioning (0-indexed, default=1 for lead II)")
-        parser.add_argument("--cond_drop_prob", type=float, default=0.1, help="Condition dropout probability for classifier-free guidance")
-        parser.add_argument("--cfg_scale", type=float, default=1.0, help="Classifier-free guidance scale at inference (1.0 = no guidance)")
-        parser.add_argument("--text_max_len", type=int, default=512, help="Max text length for text conditioning (byte-level)")
-
         parser.add_argument("--norm_eps", type=float, default=1e-6, help="Please choose the normalization epsilon")
 
         parser.add_argument("--wandb", action="store_true", default=None, help="Enable logging")
@@ -100,6 +93,15 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--ema", action="store_true", default=None)
         parser.add_argument("--ema_decay", type=float, default=0.999)
 
+        parser.add_argument("--condition", type=str, default=None, choices=["label", "text", "lead"],
+                    help="Condition type for conditional diffusion (None = unconditional)")
+        parser.add_argument("--condition_label", type=str, default=None, help="Which label key to condition on (e.g. v_pacing)")
+        parser.add_argument("--condition_lead", type=int, default=0, help="Lead index for lead conditioning (0-indexed, default=1 for lead II)")
+        parser.add_argument("--condition_dropout", type=float, default=0.1, help="Condition dropout probability for classifier-free guidance")
+        parser.add_argument("--cfg_scale", type=float, default=1.0, help="Classifier-free guidance scale at inference (1.0 = no guidance)")
+        parser.add_argument("--condition_text_max_len", type=int, default=128, help="Max text length for text conditioning (byte-level)")
+        parser.add_argument("--text_feature_extractor", type=str, default=None,
+                            help="HuggingFace model name for LLM text encoder")
     if "train" in mode:
         parser.add_argument("--epochs", type=int, default=1, help="Number of epochs")
         parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
