@@ -12,42 +12,19 @@ def get_optimizer(args, model):
 
 
 def _is_muon_param(name: str, param: torch.Tensor) -> bool:
-    """
-    Determine if a parameter should be optimized with Muon.
-
-    Muon is designed for 2D weight matrices in hidden layers.
-    Excludes: embeddings, biases, normalization, and head/output layers.
-
-    Reference: https://kellerjordan.github.io/posts/muon/
-    """
     if param.ndim != 2:
         return False
     name_lower = name.lower()
-    # Exclude embeddings (input representations)
     if "emb" in name_lower:
         return False
-    # Exclude output projections and classifier heads
     if "output_proj" in name_lower or "head" in name_lower:
         return False
-    # Exclude normalization layers
     if "norm" in name_lower or "ln" in name_lower:
         return False
     return True
 
 
 class MuonAdamW:
-    """
-    Combined Muon + AdamW optimizer.
-
-    Muon optimizes 2D hidden layer weights; AdamW handles the rest.
-    This follows the standard practice from the Muon paper.
-
-    References:
-    - PyTorch Muon: https://docs.pytorch.org/docs/stable/generated/torch.optim.Muon.html
-    - Keller Jordan: https://github.com/KellerJordan/Muon
-    - Diffusion benchmark: https://arxiv.org/abs/2510.19376
-    """
-
     def __init__(self, muon_opt, adamw_opt, adamw_lr_ratio: float):
         self.muon = muon_opt
         self.adamw = adamw_opt
@@ -122,14 +99,6 @@ class Optimizer:
         )
 
     def _build_muon_optimizer(self, model):
-        """
-        Build Muon for 2D hidden weights + AdamW for everything else.
-
-        Hyperparameter rationale:
-        - Muon: momentum=0.95, nesterov=True (empirically validated defaults)
-        - Muon uses "match_rms_adamw" adjustment so same LR scale works
-        - AdamW LR: 10% of Muon LR (tunable via muon_adamw_lr_ratio)
-        """
         from torch.optim import Muon
 
         muon_params = []
@@ -143,26 +112,20 @@ class Optimizer:
             else:
                 adamw_params.append(param)
 
-        # Learning rates
-        # With "match_rms_adamw", Muon LR can be similar to AdamW LR
-        # Default ratio: AdamW gets 10% of Muon's LR (can be tuned)
-        adamw_lr_ratio = getattr(self.args, "muon_adamw_lr_ratio", 0.1)
+        adamw_lr_ratio = getattr(self.args, "muon_adamw_lr_ratio", 0.015)
         adamw_lr = self.peak_lr * adamw_lr_ratio
 
-        # Muon hyperparameters
         muon_momentum = getattr(self.args, "muon_momentum", 0.95)
         muon_nesterov = getattr(self.args, "muon_nesterov", True)
         muon_ns_steps = getattr(self.args, "muon_ns_steps", 5)
 
         wd = self._weight_decay()
 
-        # Store for logging
         self._muon_param_count = len(muon_params)
         self._adamw_param_count = len(adamw_params)
         self._adamw_lr = adamw_lr
         self._adamw_lr_ratio = adamw_lr_ratio
 
-        # Build separate optimizers
         muon_opt = Muon(
             muon_params,
             lr=self.peak_lr,
@@ -170,7 +133,6 @@ class Optimizer:
             nesterov=muon_nesterov,
             ns_steps=muon_ns_steps,
             weight_decay=wd,
-            adjust_lr_fn="match_rms_adamw",
         )
 
         adamw_opt = AdamW(
@@ -208,7 +170,6 @@ class Optimizer:
                 )
 
     def _lr_multiplier(self):
-        """Compute LR multiplier based on warmup and schedule."""
         step = self.n_current_steps
         warmup = self.n_warmup_steps
         schedule = self.args.lr_schedule
@@ -241,10 +202,8 @@ class Optimizer:
     def step_and_update_lr(self):
         mult = self._lr_multiplier()
         if self._is_muon:
-            # Muon params: scale from peak_lr
             for g in self.optimizer.muon.param_groups:
                 g["lr"] = self.peak_lr * mult
-            # AdamW params: scale from adamw_lr (which is peak_lr * ratio)
             for g in self.optimizer.adamw.param_groups:
                 g["lr"] = self._adamw_lr * mult
         else:

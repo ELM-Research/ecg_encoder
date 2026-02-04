@@ -100,10 +100,6 @@ src/pretrain_encoder.py \
 --grad_clip 1.0 \
 --wandb
 
-# Muon optimizer examples (requires PyTorch >= 2.9)
-# Muon uses orthogonalization for 2D hidden weights; AdamW for rest
-# Reference: https://arxiv.org/abs/2510.19376 (18% lower loss than AdamW on diffusion)
-
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 uv run torchrun --standalone --nproc_per_node=8 \
 src/pretrain_encoder.py \
@@ -124,8 +120,6 @@ src/pretrain_encoder.py \
 --augment \
 --warmup 500 \
 --optimizer muon \
---muon_momentum 0.95 \
---muon_adamw_lr_ratio 0.1 \
 --grad_clip 1.0 \
 --wandb
 
@@ -149,7 +143,5 @@ src/pretrain_encoder.py \
 --augment \
 --warmup 500 \
 --optimizer muon \
---muon_momentum 0.95 \
---muon_adamw_lr_ratio 0.1 \
 --grad_clip 1.0 \
 --wandb
