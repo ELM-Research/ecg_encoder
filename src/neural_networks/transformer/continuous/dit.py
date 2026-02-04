@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Literal
 import math
-from transformers import AutoModelForCausalLM
+from transformers import AutoModel
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -76,12 +76,8 @@ class TextEmbedder(nn.Module):
     def forward(self, condition) -> torch.Tensor:
         with torch.no_grad():
             out = self.text_feature_extractor(**condition)
-        hidden = out.last_hidden_state
-        print("hidden", hidden.shape)
-        proj_out = self.proj(hidden)
-        print(proj_out.shape)
-        input()
-        pass
+        # return self.proj(out.last_hidden_state[:, -1, :])
+        return self.proj(out.last_hidden_state.mean(dim=1)) # two ways but i like means better..
 
 class DiTBlock(nn.Module):
     def __init__(self, d_model: int, n_heads: int, dim_ff: int, dropout: float):
@@ -138,7 +134,7 @@ class DiT(nn.Module):
         if cfg.condition == "label":
             self.condition_embedder = LabelEmbedder(cfg.num_label_classes, cfg.d_model)
         elif cfg.condition == "text":
-            text_feature_extractor = AutoModelForCausalLM.from_pretrained(cfg.text_feature_extractor)
+            text_feature_extractor = AutoModel.from_pretrained(cfg.text_feature_extractor)
             self.condition_embedder = TextEmbedder(text_feature_extractor, cfg.d_model)
         elif cfg.condition == "lead":
             self.condition_embedder = LeadEmbedder(cfg.d_model, cfg.max_seq_len)
