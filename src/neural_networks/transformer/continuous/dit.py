@@ -70,9 +70,15 @@ class TextEmbedder(nn.Module):
     def __init__(self, text_feature_extractor: str, d_model: int):
         super().__init__()
         self.text_feature_extractor = text_feature_extractor
-        for p in self.text_feature_extractor.parameters():
-            p.requires_grad = False
+        self.text_feature_extractor.requires_grad_(False)
+        self.text_feature_extractor.eval()
         self.proj = nn.Linear(self.text_feature_extractor.config.hidden_size, d_model)
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.text_feature_extractor.eval()
+        return self
+    
     def forward(self, condition) -> torch.Tensor:
         with torch.no_grad():
             out = self.text_feature_extractor(**condition)
