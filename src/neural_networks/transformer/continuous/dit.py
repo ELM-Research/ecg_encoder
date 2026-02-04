@@ -72,13 +72,14 @@ class TextEmbedder(nn.Module):
         self.text_feature_extractor = text_feature_extractor
         for p in self.text_feature_extractor.parameters():
             p.requires_grad = False
-        self.proj = nn.Linear(self.text_feature_extractor.hidden_size, d_model)
+        self.proj = nn.Linear(self.text_feature_extractor.config.hidden_size, d_model)
     def forward(self, condition) -> torch.Tensor:
         with torch.no_grad():
             out = self.text_feature_extractor(**condition)
-        print(out)
         hidden = out.last_hidden_state
-        print("hidden", hidden)
+        print("hidden", hidden.shape)
+        proj_out = self.proj(hidden)
+        print(proj_out.shape)
         input()
         pass
 
