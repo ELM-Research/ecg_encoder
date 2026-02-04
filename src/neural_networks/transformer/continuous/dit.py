@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Literal
 import math
-
+from transformers import AutoModelForCausalLM
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,12 +20,12 @@ class DiTConfig:
     num_steps: int = 50
     beta_start: float = 1e-4
     beta_end: float = 0.02
-    # Conditioning
-    cond_type: Optional[Literal["label", "text", "lead"]] = None
+    condition: Optional[Literal["label", "text", "lead"]] = None
     num_label_classes: int = 2
-    text_vocab_size: int = 257  # byte-level: 0=pad, 1-256=byte values
-    text_max_len: int = 512
-    cond_drop_prob: float = 0.1
+    text_max_len: int = 64
+    condition_dropout: float = 0.1
+    text_feature_extractor: str = None
+
 
 
 @dataclass
@@ -43,8 +43,6 @@ def timestep_embedding(t: torch.Tensor, dim: int, max_period: int = 10000) -> to
         embedding = F.pad(embedding, (0, 1))
     return embedding
 
-
-# --- Condition Embedders ---
 
 class LabelEmbedder(nn.Module):
     def __init__(self, num_classes: int, d_model: int):
@@ -69,19 +67,20 @@ class LeadEmbedder(nn.Module):
 
 
 class TextEmbedder(nn.Module):
-    def __init__(self, vocab_size: int, max_len: int, d_model: int):
+    def __init__(self, text_feature_extractor: str, d_model: int):
         super().__init__()
-        self.tok_emb = nn.Embedding(vocab_size, d_model, padding_idx=0)
-        self.pos_emb = nn.Embedding(max_len, d_model)
-
-    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        pos = torch.arange(token_ids.shape[1], device=token_ids.device)
-        x = self.tok_emb(token_ids) + self.pos_emb(pos)
-        mask = (token_ids != 0).unsqueeze(-1).float()
-        return (x * mask).sum(1) / mask.sum(1).clamp(min=1)
-
-
-# --- DiT ---
+        self.text_feature_extractor = text_feature_extractor
+        for p in self.text_feature_extractor.parameters():
+            p.requires_grad = False
+        self.proj = nn.Linear(self.text_feature_extractor.hidden_size, d_model)
+    def forward(self, condition) -> torch.Tensor:
+        with torch.no_grad():
+            out = self.text_feature_extractor(**condition)
+        print(out)
+        hidden = out.last_hidden_state
+        print("hidden", hidden)
+        input()
+        pass
 
 class DiTBlock(nn.Module):
     def __init__(self, d_model: int, n_heads: int, dim_ff: int, dropout: float):
@@ -104,14 +103,14 @@ class DiTBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(cond).chunk(6, dim=-1)
-
+        
         y = self.norm1(x) * (1 + scale_msa.unsqueeze(1)) + shift_msa.unsqueeze(1)
         y, _ = self.self_attn(y, y, y, key_padding_mask=key_padding_mask, need_weights=False)
         x = x + gate_msa.unsqueeze(1) * y
-
+        
         y = self.norm2(x) * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
         x = x + gate_mlp.unsqueeze(1) * self.ff(y)
-
+        
         return x
 
 
@@ -127,7 +126,7 @@ class DiT(nn.Module):
             nn.Linear(cfg.d_model * 4, cfg.d_model),
         )
         self.layers = nn.ModuleList([DiTBlock(cfg.d_model, cfg.n_heads, cfg.dim_ff, cfg.dropout) for _ in range(cfg.num_layers)])
-
+        
         self.final_norm = nn.LayerNorm(cfg.d_model, elementwise_affine=False)
         self.final_adaLN = nn.Sequential(
             nn.SiLU(),
@@ -135,16 +134,17 @@ class DiT(nn.Module):
         )
         self.output_proj = nn.Linear(cfg.d_model, cfg.input_dim)
 
-        if cfg.cond_type == "label":
-            self.cond_embedder = LabelEmbedder(cfg.num_label_classes, cfg.d_model)
-        elif cfg.cond_type == "text":
-            self.cond_embedder = TextEmbedder(cfg.text_vocab_size, cfg.text_max_len, cfg.d_model)
-        elif cfg.cond_type == "lead":
-            self.cond_embedder = LeadEmbedder(cfg.d_model, cfg.max_seq_len)
+        if cfg.condition == "label":
+            self.condition_embedder = LabelEmbedder(cfg.num_label_classes, cfg.d_model)
+        elif cfg.condition == "text":
+            text_feature_extractor = AutoModelForCausalLM.from_pretrained(cfg.text_feature_extractor)
+            self.condition_embedder = TextEmbedder(text_feature_extractor, cfg.d_model)
+        elif cfg.condition == "lead":
+            self.condition_embedder = LeadEmbedder(cfg.d_model, cfg.max_seq_len)
 
-        if cfg.cond_type is not None:
+        if cfg.condition is not None:
             self.null_cond_emb = nn.Parameter(torch.zeros(cfg.d_model))
-
+        
         self._init_weights()
 
     def _init_weights(self):
@@ -152,7 +152,7 @@ class DiT(nn.Module):
         nn.init.zeros_(self.final_adaLN[-1].bias)
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
-
+        
         if self.cfg.loss_type == "ddpm":
             betas = torch.linspace(self.cfg.beta_start, self.cfg.beta_end, self.cfg.num_steps)
             alphas = 1.0 - betas
@@ -161,36 +161,38 @@ class DiT(nn.Module):
             self.register_buffer("alphas", alphas)
             self.register_buffer("alphas_cumprod", alphas_cumprod)
 
-    def _encode_cond(self, cond: Optional[torch.Tensor], bsz: int, device: torch.device) -> Optional[torch.Tensor]:
-        if self.cfg.cond_type is None or cond is None:
+    def _encode_condition(self, condition: Optional[torch.Tensor], bsz: int, device: torch.device) -> Optional[torch.Tensor]:
+        if self.cfg.condition is None or condition is None:
             return None
-        cond_emb = self.cond_embedder(cond)
+        condition_emb = self.condition_embedder(condition)
         if self.training:
-            drop_mask = torch.rand(bsz, device=device) < self.cfg.cond_drop_prob
-            cond_emb = torch.where(drop_mask.unsqueeze(-1), self.null_cond_emb.expand(bsz, -1), cond_emb)
-        return cond_emb
+            drop_mask = torch.rand(bsz, device=device) < self.cfg.condition_dropout
+            condition_emb = torch.where(drop_mask.unsqueeze(-1), self.null_cond_emb.expand(bsz, -1), condition_emb)
+        return condition_emb
 
-    def _forward_net(self, xt: torch.Tensor, t: torch.Tensor, padding_mask: Optional[torch.Tensor] = None, cond_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def _forward_net(self, xt: torch.Tensor, t: torch.Tensor, padding_mask: Optional[torch.Tensor] = None, 
+                     condition_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
         bsz, seq_len, _ = xt.shape
         cond = self.time_mlp(timestep_embedding(t, self.cfg.d_model))
-        if cond_emb is not None:
-            cond = cond + cond_emb
+        if condition_emb is not None:
+            cond = cond + condition_emb
         pos = torch.arange(seq_len, device=xt.device).unsqueeze(0).expand(bsz, -1)
         h = self.input_proj(xt) + self.pos_emb(pos)
         for layer in self.layers:
             h = layer(h, cond, key_padding_mask=padding_mask)
-
+        
         shift, scale = self.final_adaLN(cond).chunk(2, dim=-1)
         h = self.final_norm(h) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
+        
         return self.output_proj(h)
-
-    def _forward_with_cfg(self, x: torch.Tensor, t: torch.Tensor, padding_mask: Optional[torch.Tensor], cond_emb: Optional[torch.Tensor], cfg_scale: float) -> torch.Tensor:
-        if cond_emb is not None and cfg_scale != 1.0:
-            pred_cond = self._forward_net(x, t, padding_mask, cond_emb)
+    
+    def _forward_with_cfg(self, x: torch.Tensor, t: torch.Tensor, padding_mask: Optional[torch.Tensor], 
+                          condition_emb: Optional[torch.Tensor], cfg_scale: float) -> torch.Tensor:
+        if condition_emb is not None and cfg_scale != 1.0:
+            pred_cond = self._forward_net(x, t, padding_mask, condition_emb)
             pred_uncond = self._forward_net(x, t, padding_mask, self.null_cond_emb.expand(x.shape[0], -1))
             return pred_uncond + cfg_scale * (pred_cond - pred_uncond)
-        return self._forward_net(x, t, padding_mask, cond_emb)
+        return self._forward_net(x, t, padding_mask, condition_emb)
 
     def _compute_loss(self, pred: torch.Tensor, target: torch.Tensor, padding_mask: Optional[torch.Tensor]) -> torch.Tensor:
         if padding_mask is not None:
@@ -198,17 +200,17 @@ class DiT(nn.Module):
             return (F.mse_loss(pred, target, reduction="none") * mask).sum() / mask.sum()
         return F.mse_loss(pred, target)
 
-    def forward(self, signal: torch.Tensor, padding_mask: Optional[torch.Tensor] = None, cond: Optional[torch.Tensor] = None) -> DiTOutput:
+    def forward(self, signal: torch.Tensor, padding_mask: Optional[torch.Tensor] = None,
+                 condition: Optional[torch.Tensor] = None) -> DiTOutput:
         x1 = signal.transpose(1, 2)
         bsz = x1.shape[0]
-        cond_emb = self._encode_cond(cond, bsz, x1.device)
-
+        condition_emb = self._encode_condition(condition, bsz, x1.device)
         if self.cfg.loss_type == "rectified_flow":
             x0 = torch.randn_like(x1)
             t = torch.rand(bsz, device=x1.device)
             t_expanded = t.view(bsz, 1, 1)
             xt = (1 - t_expanded) * x0 + t_expanded * x1
-            pred = self._forward_net(xt, t, padding_mask, cond_emb)
+            pred = self._forward_net(xt, t, padding_mask, condition_emb)
             target = x1 - x0
         elif self.cfg.loss_type == "ddpm":
             t_int = torch.randint(0, self.cfg.num_steps, (bsz,), device=x1.device)
@@ -217,24 +219,25 @@ class DiT(nn.Module):
             sqrt_alpha = self.alphas_cumprod[t_int].sqrt().view(bsz, 1, 1)
             sqrt_one_minus_alpha = (1 - self.alphas_cumprod[t_int]).sqrt().view(bsz, 1, 1)
             xt = sqrt_alpha * x1 + sqrt_one_minus_alpha * noise
-            pred = self._forward_net(xt, t, padding_mask, cond_emb)
+            pred = self._forward_net(xt, t, padding_mask, condition_emb)
             target = noise
 
         loss = self._compute_loss(pred, target, padding_mask)
         return DiTOutput(loss=loss, prediction=pred.transpose(1, 2))
-
+    
     @torch.inference_mode()
-    def reconstruct(self, signal: torch.Tensor, t_value: float = 0.5, padding_mask: Optional[torch.Tensor] = None, cond: Optional[torch.Tensor] = None, cfg_scale: float = 1.0) -> dict[str, torch.Tensor]:
+    def reconstruct(self, signal: torch.Tensor, t_value: float = 0.5, padding_mask: Optional[torch.Tensor] = None,
+                    condition: Optional[torch.Tensor] = None, cfg_scale: float = 1.0) -> dict[str, torch.Tensor]:
         x1 = signal.transpose(1, 2)  # (B, C, L) -> (B, L, C)
         bsz = x1.shape[0]
-        cond_emb = self._encode_cond(cond, bsz, x1.device)
+        condition_emb = self._encode_condition(condition, bsz, x1.device)
 
         if self.cfg.loss_type == "rectified_flow":
             x0 = torch.randn_like(x1)
             t = torch.full((bsz,), t_value, device=x1.device)
             t_exp = t.view(bsz, 1, 1)
             xt = (1 - t_exp) * x0 + t_exp * x1
-            pred = self._forward_with_cfg(xt, t, padding_mask, cond_emb, cfg_scale)
+            pred = self._forward_with_cfg(xt, t, padding_mask, condition_emb, cfg_scale)
             x1_pred = xt + (1 - t_exp) * pred
         elif self.cfg.loss_type == "ddpm":
             t_int = int(t_value * self.cfg.num_steps)
@@ -245,7 +248,7 @@ class DiT(nn.Module):
             sqrt_alpha = self.alphas_cumprod[t_idx].sqrt().view(bsz, 1, 1)
             sqrt_one_minus_alpha = (1 - self.alphas_cumprod[t_idx]).sqrt().view(bsz, 1, 1)
             xt = sqrt_alpha * x1 + sqrt_one_minus_alpha * noise
-            pred = self._forward_with_cfg(xt, t, padding_mask, cond_emb, cfg_scale)
+            pred = self._forward_with_cfg(xt, t, padding_mask, condition_emb, cfg_scale)
             x1_pred = (xt - sqrt_one_minus_alpha * pred) / sqrt_alpha
 
         return {
@@ -255,25 +258,25 @@ class DiT(nn.Module):
         }
 
     @torch.inference_mode()
-    def sample(self, shape: tuple, device: torch.device, num_steps: Optional[int] = None, padding_mask: Optional[torch.Tensor] = None, cond: Optional[torch.Tensor] = None, cfg_scale: float = 1.0) -> torch.Tensor:
+    def sample(self, shape: tuple, device: torch.device, num_steps: Optional[int] = None, padding_mask: Optional[torch.Tensor] = None,
+               condition: Optional[torch.Tensor] = None, cfg_scale: float = 1.0) -> torch.Tensor:
         num_steps = num_steps or self.cfg.num_steps
         bsz, c, seq_len = shape
         x = torch.randn(bsz, seq_len, c, device=device)
-
-        cond_emb = self._encode_cond(cond, bsz, device)
+        condition_emb = self._encode_condition(condition, bsz, device)
 
         if self.cfg.loss_type == "rectified_flow":
             dt = 1.0 / num_steps
             for i in range(num_steps):
                 t = torch.full((bsz,), (i + 0.5) / num_steps, device=device)
-                v = self._forward_with_cfg(x, t, padding_mask, cond_emb, cfg_scale)
+                v = self._forward_with_cfg(x, t, padding_mask, condition_emb, cfg_scale)
                 x = x + v * dt
         elif self.cfg.loss_type == "ddpm":
             if num_steps != self.cfg.num_steps:
                 raise ValueError("DDPM requires num_steps equal to training steps")
             for i in reversed(range(num_steps)):
                 t = torch.full((bsz,), i / self.cfg.num_steps, device=device)
-                pred_noise = self._forward_with_cfg(x, t, padding_mask, cond_emb, cfg_scale)
+                pred_noise = self._forward_with_cfg(x, t, padding_mask, condition_emb, cfg_scale)
 
                 alpha = self.alphas[i]
                 alpha_cumprod = self.alphas_cumprod[i]
