@@ -99,3 +99,49 @@ src/pretrain_encoder.py \
 --optimizer adamw \
 --grad_clip 1.0 \
 --wandb
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+uv run torchrun --standalone --nproc_per_node=8 \
+src/pretrain_encoder.py \
+--data batch15 batch17 batch18 \
+--data_representation "signal" \
+--objective "ddpm" \
+--neural_network "trans_continuous_dit" \
+--task "pretrain" \
+--batch_size 32 \
+--distributed \
+--ref_global_bs 256 \
+--epochs 50 \
+--torch_compile \
+--ema \
+--lr 2e-2 \
+--lr_schedule cosine \
+--weight_decay 1e-2 \
+--augment \
+--warmup 500 \
+--optimizer muon \
+--grad_clip 1.0 \
+--wandb
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+uv run torchrun --standalone --nproc_per_node=8 \
+src/pretrain_encoder.py \
+--data batch15 batch17 batch18 \
+--data_representation "signal" \
+--objective "rectified_flow" \
+--neural_network "trans_continuous_dit" \
+--task "pretrain" \
+--batch_size 32 \
+--distributed \
+--ref_global_bs 256 \
+--epochs 50 \
+--torch_compile \
+--ema \
+--lr 2e-2 \
+--lr_schedule cosine \
+--weight_decay 1e-2 \
+--augment \
+--warmup 500 \
+--optimizer muon \
+--grad_clip 1.0 \
+--wandb
