@@ -1,10 +1,10 @@
 import torch
 from tqdm import tqdm
-import numpy as np
-
 from utils.gpu_setup import is_main
 from utils.eval_stats import accuracy, f1, roc_auc
+from utils.runner_helpers import batch_to_device
 
+from configs.constants import BATCH_LABEL_CATS
 
 def eval_classification(nn, dataloader, args):
     show_progress = is_main()
@@ -16,61 +16,56 @@ def eval_classification(nn, dataloader, args):
         leave=False,
     )
     device = next(nn.parameters()).device
-    all_acc, all_f1 = [], []
-    all_logits = []
+    all_preds = []
+    all_probs = []
     all_labels = []
-
+    
     with torch.no_grad():
-        for step, batch in enumerate(progress):
-            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        for batch in progress:
+            batch = {k: batch_to_device(v, device) for k, v in batch.items()}
+            
             if "trans_discrete" in args.neural_network:
-                labels = batch["labels"].detach().cpu().numpy()
                 out, logits = nn.generate(
                     tgt_ids=batch["tgt_ids"],
                     max_new_tokens=3,
                     return_new_only=True,
-                    return_logits = True,
+                    return_logits=True,
                 )
-                out = out[:, 1::2]
-                logits = logits[:, 1::2]
-                labels = labels[:, 1::2]
-                all_logits.append(logits.detach().cpu())
-                all_labels.append(batch["labels"][:, 1::2].detach().cpu())
-            elif "trans_continuous" in args.neural_network or \
-                "mae" in args.neural_network:
+                label_name = args.batch_labels[-1]
+                class_ids = [getattr(args, f"{label_name}_{int(v)}") for v in BATCH_LABEL_CATS[label_name]]
+                class_out = out[:, 1::2][:, -1]
+                class_logits = logits[:, 1::2][:, -1, class_ids]
+                class_labels = batch["labels"][:, 1::2][:, -1]
+                probs = torch.softmax(class_logits, dim=-1)[:, 1]
+                preds = (class_out == class_ids[1]).long()
+                labels = (class_labels == class_ids[1]).long()
+            elif "trans_continuous" in args.neural_network or "mae" in args.neural_network:
                 out = nn(**batch)
-                for label in args.batch_labels:
-                    logits = out.logits[label]
-                    all_logits.append(logits[:, 1].detach().cpu())
-                    out = logits.argmax(dim=1)
-                    labels = batch[label].detach().cpu().numpy()
-                    all_labels.append(labels)
-            
-            pred = out.detach().cpu().numpy()
-            if pred.shape == labels.shape:
-                all_acc.append(accuracy(pred, labels))
-                all_f1.append(f1(pred, labels))
-            else:
-                all_acc.append(0)
-                all_f1.append(0)
-            # if step>10:
-            #     break
-    
-    all_logits = torch.cat(all_logits)
-    all_labels = torch.cat(all_labels)
+                if args.task == "multiclass_classification":
+                    label_name = args.batch_labels[-1]
+                    logits = out.logits[label_name]
+                    probs = torch.softmax(logits, dim=-1)[:, 1]
+                    preds = logits.argmax(dim=-1)
+                    labels = batch[label_name]
+                elif args.task == "multilabel_classification":
+                    logits = out.logits
+                    preds = (logits > 0).int()
+                    targets = torch.stack([batch[k] for k in args.batch_labels], dim=-1)
+                    
 
-    data_names = "_".join(args.data)
-    batch_label_names = "_".join(args.batch_labels)
-    save_dir = f"{args.run_dir}/roc_auc_curve_{batch_label_names}_{data_names}.png"
-    if "trans_discrete" in args.neural_network:
-        probs = torch.softmax(all_logits, dim=-1)
-        targets = torch.nn.functional.one_hot(all_labels, num_classes=all_logits.size(-1))
-        auroc = roc_auc(probs.reshape(-1).float().numpy(), targets.reshape(-1).numpy(), save_dir)
-    elif "trans_continuous" in args.neural_network or \
-                "mae" in args.neural_network:
-        auroc = roc_auc(all_logits.numpy(), all_labels.numpy(), save_dir)
-    print(f"ROC AUC: {auroc}")
-    print(f"Acc: {np.mean(all_acc):.4f} | F1: {np.mean(all_f1):.4f}")
+            all_preds.append(preds.cpu())
+            all_probs.append(probs.cpu())
+            all_labels.append(labels.cpu())
     
-    return {"accuracy": float(np.mean(all_acc)), "f1": float(np.mean(all_f1)),
-            "roc_auc": auroc}
+    all_preds = torch.cat(all_preds).float().numpy()
+    all_probs = torch.cat(all_probs).float().numpy()
+    all_labels = torch.cat(all_labels).numpy()
+    
+    label_name = args.batch_labels[-1]
+    acc = accuracy(all_preds, all_labels)
+    f1_score = f1(all_preds, all_labels)
+    save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
+    auroc = roc_auc(all_probs, all_labels, save_dir)
+    
+    print(f"ROC AUC: {auroc:.4f} | Acc: {acc:.4f} | F1: {f1_score:.4f}")
+    return {"accuracy": acc, "f1": f1_score, "roc_auc": auroc}
