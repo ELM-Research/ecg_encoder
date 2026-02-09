@@ -61,11 +61,18 @@ def eval_classification(nn, dataloader, args):
     all_probs = torch.cat(all_probs).float().numpy()
     all_labels = torch.cat(all_labels).numpy()
     
-    label_name = args.batch_labels[-1]
-    acc = accuracy(all_preds, all_labels)
-    f1_score = f1(all_preds, all_labels)
-    save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
-    auroc = roc_auc(all_probs, all_labels, save_dir)
+    if args.task == "multilabel_classification":
+        label_name = "_".join(args.batch_labels)
+        acc = accuracy(all_preds.flatten(), all_labels.flatten())
+        f1_score = f1(all_preds.flatten(), all_labels.flatten())
+        save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
+        auroc = roc_auc(all_probs.flatten(), all_labels.flatten(), save_dir)
+    else:
+        label_name = args.batch_labels[-1]
+        acc = accuracy(all_preds, all_labels)
+        f1_score = f1(all_preds, all_labels)
+        save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
+        auroc = roc_auc(all_probs, all_labels, save_dir)
     
     print(f"ROC AUC: {auroc:.4f} | Acc: {acc:.4f} | F1: {f1_score:.4f}")
     return {"accuracy": acc, "f1": f1_score, "roc_auc": auroc}
