@@ -110,8 +110,7 @@ class DecoderTransformer(nn.Module):
         top_k: Optional[int] = None,
         do_sample: bool = False,
         return_new_only: bool = False,
-        return_logits: bool = False,
-    ) -> torch.Tensor:
+        return_logits: bool = True,):
         out = tgt_ids
         start_len = out.size(1)
         all_logits = [] if return_logits else None
@@ -146,9 +145,9 @@ class DecoderTransformer(nn.Module):
             out = torch.cat([out, next_id], dim=1)
 
         tokens = out[:, start_len:] if return_new_only else out
-        out_logits = torch.stack(all_logits, dim=1)
 
         if return_logits:
+            out_logits = torch.stack(all_logits, dim=1)
             return tokens, out_logits
         return tokens
 
