@@ -26,6 +26,7 @@ class Forecasting:
 
     def bpe_symbolic(self, transformed_data: Dict[str, Any]):
         inputs = np.asarray(transformed_data["transformed_data"])
+        orig_len = inputs.shape[0]
         labels = inputs.copy()
 
         if "train" in self.args.mode and self.args.objective == "autoregressive":
@@ -39,7 +40,8 @@ class Forecasting:
         if self.args.neural_network == "trans_discrete_decoder":
             out = {"tgt_ids": inputs, "labels": labels}
             if "eval" in self.args.mode:
-                out.update({"min": transformed_data["min"], "max": transformed_data["max"]})
+                out.update({"min": transformed_data["min"], "max": transformed_data["max"],
+                            "report": transformed_data["report"], "orig_len" : orig_len})
             return out
 
     def autoregressive(self, labels: np.ndarray) -> np.ndarray:
