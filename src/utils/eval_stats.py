@@ -1,8 +1,8 @@
-import torch
-import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
 
 def accuracy(pred: np.ndarray, target: np.ndarray) -> float:
     return (pred == target).mean()
@@ -23,7 +23,6 @@ def roc_auc(logits, labels, save_dir):
 def f1(pred: np.ndarray, target: np.ndarray) -> float:
     return f1_score(target.flatten(), pred.flatten(), average="macro", zero_division=0)
 
-
 def aggregate_metrics(all_metrics):
     keys = all_metrics[0].keys()
     results = {}
@@ -32,45 +31,35 @@ def aggregate_metrics(all_metrics):
         results[k] = {"mean": float(np.mean(values)), "std": float(np.std(values)), "values": values}
     return results
 
-
 def frechet_distance(mu1: np.ndarray, sigma1: np.ndarray, mu2: np.ndarray, sigma2: np.ndarray) -> float:
-    """Compute Fréchet Distance between two multivariate Gaussians N(mu1, sigma1) and N(mu2, sigma2).
-
-    FD = ||mu1 - mu2||^2 + Tr(sigma1 + sigma2 - 2 * sqrt(sigma1 @ sigma2))
-    """
     from scipy.linalg import sqrtm
 
     diff = mu1 - mu2
     covmean = sqrtm(sigma1 @ sigma2)
-    # sqrtm can return complex values due to numerical error
     if np.iscomplexobj(covmean):
         covmean = covmean.real
     return float(diff @ diff + np.trace(sigma1 + sigma2 - 2 * covmean))
 
-
 def compute_fid(real_features: np.ndarray, gen_features: np.ndarray) -> float:
-    """Compute FID between real and generated feature sets.
-
-    Args:
-        real_features: (N, D) array of features from real samples.
-        gen_features: (M, D) array of features from generated samples.
-    """
     mu1, sigma1 = real_features.mean(axis=0), np.cov(real_features, rowvar=False)
     mu2, sigma2 = gen_features.mean(axis=0), np.cov(gen_features, rowvar=False)
     return frechet_distance(mu1, sigma1, mu2, sigma2)
 
+def compute_mmd(real_features: np.ndarray, gen_features: np.ndarray, gamma: float | None = None) -> float:
+    if gamma is None:
+        gamma = 1.0 / real_features.shape[1]
+
+    def rbf(x, y):
+        dists_sq = ((x[:, None, :] - y[None, :, :]) ** 2).sum(axis=-1)
+        return np.exp(-gamma * dists_sq)
+
+    xx = rbf(real_features, real_features).mean()
+    yy = rbf(gen_features, gen_features).mean()
+    xy = rbf(real_features, gen_features).mean()
+    return float(xx + yy - 2 * xy)
 
 def compute_ssim_1d(pred: torch.Tensor, target: torch.Tensor, window_size: int = 11) -> torch.Tensor:
-    """Compute SSIM for 1D signals per-lead.
 
-    Args:
-        pred: (B, C, T) predicted signals in [0, 1].
-        target: (B, C, T) target signals in [0, 1].
-        window_size: size of the 1D Gaussian window.
-
-    Returns:
-        (B, C) SSIM per sample per lead.
-    """
     C = pred.shape[1]
     sigma = 1.5
     coords = torch.arange(window_size, dtype=pred.dtype, device=pred.device) - window_size // 2
@@ -94,53 +83,27 @@ def compute_ssim_1d(pred: torch.Tensor, target: torch.Tensor, window_size: int =
     ssim_map = ((2 * mu_xy + C1) * (2 * sigma_xy + C2)) / (
         (mu_x_sq + mu_y_sq + C1) * (sigma_x_sq + sigma_y_sq + C2)
     )
-    return ssim_map.mean(dim=2)  # (B, C)
-
+    return ssim_map.mean(dim=2)
 
 def ssim_window_size(sf: int) -> int:
-    """Derive an odd SSIM window size that spans ~44 ms (11 samples at 250 Hz)."""
     ws = int(11 * sf / 250)
-    return ws | 1  # ensure odd
-
+    return ws | 1
 
 def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor, sf: int = 250) -> dict[str, torch.Tensor]:
-    """Compute per-lead reconstruction metrics between predicted and target signals.
-
-    Args:
-        pred: (B, C, T) predicted signals in [0, 1].
-        target: (B, C, T) target signals in [0, 1].
-        sf: sampling frequency in Hz (used to scale the SSIM window).
-
-    Returns:
-        dict with keys 'mse', 'mae', 'psnr', 'ssim', each of shape (B, C).
-    """
     mse = (pred - target).pow(2).mean(dim=2)
     mae = (pred - target).abs().mean(dim=2)
     psnr = -10.0 * torch.log10(mse.clamp(min=1e-10))
     ssim = compute_ssim_1d(pred, target, window_size=ssim_window_size(sf))
     return {"mse": mse, "mae": mae, "psnr": psnr, "ssim": ssim}
 
-
-def compute_mmd(real_features: np.ndarray, gen_features: np.ndarray, gamma: float | None = None) -> float:
-    """Compute MMD with RBF kernel between real and generated feature sets.
-
-    MMD^2 = E[k(x,x')] + E[k(y,y')] - 2*E[k(x,y)]
-    where k is the RBF kernel: k(a,b) = exp(-gamma * ||a-b||^2)
-
-    Args:
-        real_features: (N, D) array of features from real samples.
-        gen_features: (M, D) array of features from generated samples.
-        gamma: RBF bandwidth. If None, uses 1 / D (median heuristic alternative).
-    """
-    if gamma is None:
-        gamma = 1.0 / real_features.shape[1]
-
-    def rbf(x, y):
-        # (N, 1, D) - (1, M, D) -> (N, M)
-        dists_sq = ((x[:, None, :] - y[None, :, :]) ** 2).sum(axis=-1)
-        return np.exp(-gamma * dists_sq)
-
-    xx = rbf(real_features, real_features).mean()
-    yy = rbf(gen_features, gen_features).mean()
-    xy = rbf(real_features, gen_features).mean()
-    return float(xx + yy - 2 * xy)
+def forecast_metrics(pred: np.ndarray, gt: np.ndarray) -> dict:
+    n = min(len(pred), len(gt))
+    if n == 0:
+        return {k: float("nan") for k in ("mse", "mae", "pearson_r", "snr_db")}
+    p, g = pred[:n].astype(np.float64), gt[:n].astype(np.float64)
+    err = p - g
+    mse = float(np.mean(err**2))
+    mae = float(np.mean(np.abs(err)))
+    r = float(np.corrcoef(p, g)[0, 1]) if p.std() > 0 and g.std() > 0 else 0.0
+    snr = float(10 * np.log10(np.mean(g**2) / mse)) if mse > 0 else float("inf")
+    return {"mse": mse, "mae": mae, "pearson_r": r if not np.isnan(r) else 0.0, "snr_db": snr}
