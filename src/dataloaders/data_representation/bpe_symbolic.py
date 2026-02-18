@@ -37,9 +37,12 @@ class BPESymbolic:
             setattr(self.args, token_name, token_id)
             self.special_tokens_map.update([token_id])
 
+        # print("SPECIAL TOKENS", self.special_tokens)
+        # print("SPECIAL TOKEN MAP", self.special_tokens_map)
         self.vocab_size = base_vocab_size + len(self.special_tokens)
 
     def __call__(self, data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+        report = data.get("report", "")
         per_mod_tokens, mn, mx = self.signal_to_bpe_tokens(data["ecg"])
         labels = {}
         if self.args.batch_labels:
@@ -49,24 +52,13 @@ class BPESymbolic:
 
         skip_pad = "eval" in self.args.mode
 
-        if self.args.objective == "autoregressive":
-            seq = self.build_autoregressive_sequence(per_mod_tokens)
-            seq = seq if skip_pad else self.pad_tokenized_data(seq)
-            return {
-                "transformed_data": seq,
-                "min": mn,
-                "max": mx,
-                **labels,
-            }
-
-        flat: List[int] = []
-        for tokens in per_mod_tokens:
-            flat.extend(tokens)
-        flat = flat if skip_pad else self.pad_tokenized_data(flat)
+        seq = self.build_autoregressive_sequence(per_mod_tokens)
+        seq = seq if skip_pad else self.pad_tokenized_data(seq)
         return {
-            "transformed_data": flat,
+            "transformed_data": seq,
             "min": mn,
             "max": mx,
+            "report": report,
             **labels,
         }
 
