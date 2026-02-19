@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Tuple, Dict, List, Any
 
-from configs.constants import BATCH_LABEL_CATS
 import bpe
 
 class BPESymbolic:
@@ -20,15 +19,6 @@ class BPESymbolic:
         else:
             extra_special = []
 
-        if self.args.batch_labels:
-            batch_label_tokens = []
-            for cat in self.args.batch_labels:
-                cat = cat.strip()
-                if cat in BATCH_LABEL_CATS:
-                    for label in BATCH_LABEL_CATS[cat]:
-                        batch_label_tokens.append(f"{cat}_{int(label)}")
-            extra_special.extend(batch_label_tokens)
-
         self.special_tokens = base_special + extra_special
         self.special_tokens_map = set()
 
@@ -44,14 +34,7 @@ class BPESymbolic:
     def __call__(self, data: Dict[str, np.ndarray]) -> Dict[str, Any]:
         report = data.get("report", "")
         per_mod_tokens, mn, mx = self.signal_to_bpe_tokens(data["ecg"])
-        labels = {}
-        if self.args.batch_labels:
-            for name, arr in data.items():
-                if name in BATCH_LABEL_CATS and name in self.args.batch_labels:
-                    labels[name] = arr
-
         skip_pad = "eval" in self.args.mode
-
         seq = self.build_autoregressive_sequence(per_mod_tokens)
         seq = seq if skip_pad else self.pad_tokenized_data(seq)
         return {
@@ -59,7 +42,6 @@ class BPESymbolic:
             "min": mn,
             "max": mx,
             "report": report,
-            **labels,
         }
 
     def signal_to_bpe_tokens(self, ecg: np.ndarray):

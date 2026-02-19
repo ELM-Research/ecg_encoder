@@ -11,8 +11,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
     parser.add_argument("--dev", action="store_true", default=None, help="Development mode")
 
     if mode in {"pretrain", "downstream_train", "downstream_eval"}:
-        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "multilabel_classification", "translation", 
-                                                                       "forecasting", "generation", "reconstruction", "multiclass_classification"])
+        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "forecasting", "generation", "reconstruction"])
         parser.add_argument("--forecast_ratio", type=float, default=0.5, help="Please choose the percentage you want to forecast")
         parser.add_argument(
             "--data",
@@ -41,7 +40,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
             "--objective",
             type=str,
             default=None,
-            choices=["autoregressive", "mae", "mlm", "ddpm", "rectified_flow", "merl", "mlae", "mtae", "st_mem",],
+            choices=["autoregressive", "mae", "ddpm", "rectified_flow", "merl", "mlae", "mtae", "st_mem",],
             help="Please choose the representation of data you want to input into the neural network.",
         )
         parser.add_argument("--patch_dim", type=int, default=2500, help="Please choose a patch dim that is evenly divisible by signal_len.")
@@ -66,8 +65,6 @@ def get_args(mode: Mode) -> argparse.Namespace:
             help="Please choose the main neural network",
             choices=[
                 "trans_discrete_decoder",
-                "trans_discrete_encoder",
-                "trans_discrete_seq2seq",
                 "trans_continuous_nepa",
                 "trans_continuous_dit",
                 "mae_vit",
@@ -77,15 +74,6 @@ def get_args(mode: Mode) -> argparse.Namespace:
                 "st_mem",
             ],
         )
-        parser.add_argument(
-            "--batch_labels",
-            type=str,
-            nargs="+",
-            default = None,
-            help="qrs_dur_wide, v_pacing, lbbb available for only batch datasets",
-        )
-        parser.add_argument("--add_task_head", action="store_true", default=None, help="Adds task head")
-        parser.add_argument("--ckpt_has_head", action="store_true", default=None, help="indicates head is already trained")
 
         parser.add_argument("--norm_eps", type=float, default=1e-6, help="Please choose the normalization epsilon")
 
@@ -97,9 +85,8 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--ema", action="store_true", default=None)
         parser.add_argument("--ema_decay", type=float, default=0.999)
 
-        parser.add_argument("--condition", type=str, default=None, choices=["label", "text", "lead"],
+        parser.add_argument("--condition", type=str, default=None, choices=["text", "lead"],
                     help="Condition type for conditional diffusion (None = unconditional)")
-        parser.add_argument("--condition_label", type=str, default=None, help="Which label key to condition on (e.g. v_pacing)")
         parser.add_argument("--condition_lead", type=int, default=0, help="Lead index for lead conditioning (0-indexed, default=1 for lead II)")
         parser.add_argument("--condition_dropout", type=float, default=0.1, help="Condition dropout probability for classifier-free guidance")
         parser.add_argument("--cfg_scale", type=float, default=1.0, help="Classifier-free guidance scale at inference (1.0 = no guidance)")

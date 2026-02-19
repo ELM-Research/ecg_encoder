@@ -47,9 +47,9 @@ def run_train(
             ema.update()
         if getattr(args, "wandb", False) and is_main():
             wandb.log({"train/step_loss": loss.item(), "train/lr": optimizer.learning_rate, "epoch": epoch})
-        # if checkpoint_manager and is_main():
-        #     if checkpoint_manager.save_step(step, total_steps_per_epoch):
-        #         checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_", ema=ema)
+        if checkpoint_manager and is_main():
+            if checkpoint_manager.save_step(step, total_steps_per_epoch):
+                checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_", ema=ema)
         if train_dev_break(getattr(args, "dev", False), batch, loss.item()):
             break
         # if step > 4000:

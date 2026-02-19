@@ -2,8 +2,6 @@ from dataloaders.dataset.base_dataset import BaseDataset
 
 from dataloaders.data_representation.signal import Signal
 from dataloaders.data_representation.bpe_symbolic import BPESymbolic
-
-from dataloaders.task.classification import Classification
 from dataloaders.task.forecasting import Forecasting
 from dataloaders.task.pretrain import Pretrain
 from dataloaders.dataset.base_dataset import load_base_dataset
@@ -46,8 +44,6 @@ class DatasetMixer:
     def build_task(self):
         if self.args.task in ["pretrain", "generation", "reconstruction"]:
             return Pretrain(self.args)
-        elif "classification" in self.args.task:
-            return Classification(self.args)
         elif self.args.task == "forecasting":
             return Forecasting(self.args)
         raise ValueError(f"Unknown task type: {self.args.task}")

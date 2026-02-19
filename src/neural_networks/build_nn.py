@@ -33,19 +33,8 @@ class BuildNN:
             nn_components = self.prepare_st_mem()
             nn_components["find_unused_parameters"] = ST_MEM_MODELS[self.args.neural_network]["find_unused_parameters"]
         assert nn_components is not None, print("NN Components is None")
-
-        d_model = nn_components["neural_network"].cfg.d_model
-        add_head_first = self.args.add_task_head and self.args.ckpt_has_head
-
-        if add_head_first:
-            nn_components["neural_network"] = self.add_task_head(nn_components["neural_network"], d_model)
-
         if self.args.nn_ckpt:
             self.load_nn_checkpoint(nn_components, data_representation)
-
-        if self.args.add_task_head and not self.args.ckpt_has_head:
-            nn_components["neural_network"] = self.add_task_head(nn_components["neural_network"], d_model)
-
         return nn_components
 
     def prepare_transformer(self, data_representation):
@@ -60,14 +49,6 @@ class BuildNN:
                 model = DecoderTransformer(cfg)
                 if self.args.bfloat_16:
                     model = model.to(torch.bfloat16) # decoder only usually bfloat16
-            elif self.args.neural_network == "trans_discrete_encoder":
-                from neural_networks.transformer.discrete.encoder import EncoderTransformerConfig, EncoderTransformer
-                cfg = EncoderTransformerConfig(vocab_size=vocab_size, pad_id=self.args.pad_id, max_seq_len=self.args.bpe_symbolic_len)
-                model = EncoderTransformer(cfg)
-            elif self.args.neural_network == "trans_discrete_seq2seq":
-                from neural_networks.transformer.discrete.seq2seq import Seq2SeqTransformerConfig, Seq2SeqTransformer
-                cfg = Seq2SeqTransformerConfig(vocab_size=vocab_size, pad_id=self.args.pad_id, max_seq_len=self.args.bpe_symbolic_len)
-                model = Seq2SeqTransformer(cfg)
         elif "trans_continuous" in self.args.neural_network:
             if self.args.neural_network == "trans_continuous_nepa":
                 from neural_networks.transformer.continuous.nepa import NEPAConfig, NEPATransformer
@@ -116,18 +97,6 @@ class BuildNN:
         cfg = ST_MEMConfig(seq_len=self.args.segment_len, patch_size=self.calculate_patch_size())
         model = ST_MEM(cfg)
         return {"neural_network": model}
-
-    def add_task_head(self, model, hidden_dim):
-        if is_main():
-            print(f"Adding {self.args.task} Head")
-        if self.args.task == "multiclass_classification":
-            from neural_networks.task_heads.multiclass_classification import MultiClassClassificationHead
-            model = MultiClassClassificationHead(model, hidden_dim=hidden_dim, labels=self.args.batch_labels)
-        elif self.args.task == "multilabel_classification":
-            from neural_networks.task_heads.multilabel_classification import MultiLabelClassificationHead
-            model = MultiLabelClassificationHead(model, hidden_dim=hidden_dim, labels=self.args.batch_labels)
-        
-        return model
 
     def load_nn_checkpoint(self, nn_components, data_representation):
         ckpt = torch.load(self.args.nn_ckpt, map_location="cpu", weights_only=False)

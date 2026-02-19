@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 from transformers import AutoTokenizer
 
-from configs.constants import BATCH_LABEL_CATS, PTB_INDEPENDENT_IDX
+from configs.constants import PTB_INDEPENDENT_IDX
 
 class Signal:
     def __init__(self, args):
@@ -17,19 +17,11 @@ class Signal:
             "transformed_data": padded_data,
             "padding_mask": padding_mask,
         }
-        if self.args.batch_labels:
-            for name, arr in data.items():
-                if name in BATCH_LABEL_CATS and name in self.args.batch_labels:
-                    result[name] = arr
 
-        if self.args.condition:
-            if self.args.condition == "label":
-                label_name = self.args.condition_label
-                result["condition"] = np.int64(data[label_name])
-            elif self.args.condition == "lead":
-                result["condition"] = padded_data[self.args.condition_lead].astype(np.float32)
-                other = [i for i in PTB_INDEPENDENT_IDX if i != self.args.condition_lead]
-                result["transformed_data"] = padded_data[other]
+        if self.args.condition == "lead":
+            result["condition"] = padded_data[self.args.condition_lead].astype(np.float32)
+            other = [i for i in PTB_INDEPENDENT_IDX if i != self.args.condition_lead]
+            result["transformed_data"] = padded_data[other]
 
         if self.text_feature_extractor:
             result["condition"] = self.encode_text(report, self.args.condition_text_max_len)

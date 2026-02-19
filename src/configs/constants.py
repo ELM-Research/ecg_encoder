@@ -5,16 +5,9 @@ from typing import Literal
 Mode = Literal["pretrain", "downstream_train", "downstream_eval"]
 
 ### Datasets
-BASE_DATASETS = {"ptb_xl", "mimic_iv", "code15", "cpsc", "csn", "batch10", "batch9", "batch11",
-                 "batch12", "batch13", "batch14", "batch15", "batch16",
-                 "batch17", "batch18", "batch19", "batch20", "batch21"}
+BASE_DATASETS = {"ptb_xl", "mimic_iv", "code15", "cpsc", "csn",}
 
 ### CLassification
-BATCH_LABEL_CATS = {"v_pacing": [0,1], 
-                   "lbbb": [0,1], 
-                   "qrs_dur_wide": [0,1],
-                   "normal": [0,1],
-                   "noise": [0, 1]}
 
 # All allowed datasets, just add to the union
 ALLOWED_DATA = set().union(BASE_DATASETS)
@@ -35,12 +28,6 @@ PTB_INDEPENDENT_IDX = [0,1,6,7,8,9,10,11]
 
 TRANSFORMER_MODELS = {
     "trans_discrete_decoder": {
-        "find_unused_parameters": False,
-    },
-    "trans_discrete_encoder": {
-        "find_unused_parameters": False,
-    },
-    "trans_discrete_seq2seq": {
         "find_unused_parameters": False,
     },
     "trans_continuous_nepa": {
@@ -81,47 +68,8 @@ ST_MEM_MODELS = {
     },
 }
 
-VISION_ENCODERS = {
-    "clip-vit-base-patch32": {
-        "model": "openai/clip-vit-base-patch32",
-        "tokenizer": "openai/clip-vit-base-patch32",
-        "find_unused_parameters": False,
-        "strict": True,
-        "model_hidden_size": None,
-        "projection_dim": None,
-        "encoder_input_len": 77,
-    },
-    "siglip-base-patch16-224": {
-        "model": "google/siglip-base-patch16-224",
-        "tokenizer": "google/siglip-base-patch16-224",
-        "find_unused_parameters": False,
-        "strict": True,
-        "model_hidden_size": None,
-        "projection_dim": None,
-        "encoder_input_len": 64,
-    },
-    "vit-base-patch16-224-in21k": {
-        "model": "google/vit-base-patch16-224-in21k",
-        "tokenizer": "google/vit-base-patch16-224-in21k",
-        "find_unused_parameters": False,
-        "strict": True,
-        "model_hidden_size": None,
-        "projection_dim": None,
-        "num_patches": None,
-        "encoder_input_len": None,
-    },
-}
-
-
 # Encoders
 ECG_ENCODERS = {
-    "signal2vec": {
-        "find_unused_parameters": False,
-        "strict": False,
-        "model_hidden_size": None,
-        "projection_dim": 128,
-        "encoder_input_len": None,
-    },
     "st_mem": {
         "find_unused_parameters": False,
         "strict": False,
@@ -143,24 +91,7 @@ ECG_ENCODERS = {
         "projection_dim": 256,
         "encoder_input_len": None,
     },
-    "projection": {
-        "find_unused_parameters": False,
-        "strict": False,
-        "model_hidden_size": None,
-        "projection_dim": None,
-        "encoder_input_len": None,
-    },
 }
-
-
-# TEXT CLEANER
-LEADING_PREFIX_RE = re.compile(
-    r"^\s*(?:[:：]\s*|(?:user|assistant|human|gpt|model|system|q|a)\s*:\s*)+",
-    flags=re.IGNORECASE,
-)
-TAG_RE = re.compile(r"<\s*(?:ecg|image)\s*>\s*\n?", flags=re.IGNORECASE)
-IMAGE_WORD_RE = re.compile(r"\b(image)\b", flags=re.IGNORECASE)
-
 
 def case_preserving_signal(m: re.Match) -> str:
     w = m.group(1)
