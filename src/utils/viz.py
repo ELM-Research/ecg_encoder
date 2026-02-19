@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 
 from utils.dir_file import DirFileManager
 
@@ -30,19 +32,43 @@ def plot_ecg(ecg, leads = PTB_ORDER, sf = 250, file_name = None, plot_title = No
     plt.savefig(f"{save_dir}/pngs/{file_name}.png", dpi = 150, bbox_inches = "tight")
     plt.close()
 
-def plot_forecast(context, gt_future, pred_future, report, save_path):
-    fig, ax = plt.subplots(figsize=(20, 4))
-    n_ctx = len(context)
-    fut_x = np.arange(n_ctx, n_ctx + max(len(gt_future), len(pred_future)))
-    ax.plot(np.arange(n_ctx), context, color="black", linewidth=1, label="Context")
-    ax.plot(fut_x[: len(gt_future)], gt_future, color="silver", linewidth=1, label="Ground Truth")
-    ax.plot(fut_x[: len(pred_future)], pred_future, color="tab:red", linewidth=1, label="Prediction")
-    ax.axvline(n_ctx, color="gray", linestyle="--", linewidth=0.5)
-    ax.set_title(report, fontsize=14)
-    ax.set_xlabel("Time", fontsize=12)
-    ax.set_ylabel("Value", fontsize=12)
-    ax.legend(fontsize=11)
-    ax.tick_params(labelsize=10)
-    fig.tight_layout()
-    fig.savefig(save_path, dpi=150)
+def plot_forecast(full_gt, full_pred, n_ctx_flat, n_gt_end, n_pred_end,
+                  report, save_path, segment_len=2500, leads=PTB_ORDER, sf=250):
+    n_leads = full_gt.shape[0]
+    t = np.arange(segment_len) / sf
+
+    fig, axes = plt.subplots(n_leads, 1, figsize=(20, n_leads * 1.2), sharex=True)
+    for i, ax in enumerate(axes):
+        lead_start = i * segment_len
+        bnd = np.clip(n_ctx_flat - lead_start, 0, segment_len)
+        gt_end = np.clip(n_gt_end - lead_start, 0, segment_len)
+        pred_end = np.clip(n_pred_end - lead_start, 0, segment_len)
+        pad_start = min(gt_end, pred_end)
+        if pad_start < segment_len:
+            ax.axvspan(t[pad_start], t[-1], color="lavender", alpha=0.5)
+        if bnd > 0:
+            ax.plot(t[:bnd], full_gt[i, :bnd], color="black", linewidth=1.0)
+        if bnd < segment_len:
+            ax.plot(t[bnd:gt_end], full_gt[i, bnd:gt_end], color="tab:blue", linewidth=1.0)
+            ax.plot(t[bnd:pred_end], full_pred[i, bnd:pred_end], color="tab:red", linewidth=1.0)
+        if 0 < bnd < segment_len:
+            ax.axvline(t[bnd], color="gray", linestyle="--", linewidth=0.8)
+        ax.set_ylabel(leads[i], fontsize=8, rotation=0, ha="right", va="center")
+        ax.set_yticks([])
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+
+    handles = [
+        mlines.Line2D([], [], color="black", linewidth=1.0, label="Context"),
+        mlines.Line2D([], [], color="tab:blue", linewidth=1.0, label="Ground Truth"),
+        mlines.Line2D([], [], color="tab:red", linewidth=1.0, label="Prediction"),
+        mpatches.Patch(color="lavender", alpha=0.5, label="Padding"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=10,
+               frameon=False, bbox_to_anchor=(0.5, -0.02))
+    axes[-1].set_xlabel("Time (s)", fontsize=10)
+    fig.suptitle(report, fontsize=12)
+    fig.tight_layout(rect=[0, 0.03, 1, 1])
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()

@@ -44,9 +44,9 @@ class DatasetMixer:
         raise ValueError(f"Unknown data representation: {self.args.data_representation}")
 
     def build_task(self):
-        if self.args.task == "pretrain":
+        if self.args.task in ["pretrain", "generation", "reconstruction"]:
             return Pretrain(self.args)
-        elif self.args.task == "classification":
+        elif "classification" in self.args.task:
             return Classification(self.args)
         elif self.args.task == "forecasting":
             return Forecasting(self.args)

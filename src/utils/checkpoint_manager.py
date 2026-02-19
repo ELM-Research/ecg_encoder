@@ -50,7 +50,6 @@ class CheckpointManager:
         save_interval = max(1, total_steps_per_epoch // 5)
         return step % save_interval == 0
 
-
     def stop_early(self):
         if len(self.epoch_losses) < self.args.patience + 1:
             return False

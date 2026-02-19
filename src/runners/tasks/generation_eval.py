@@ -1,11 +1,11 @@
 import torch
-import numpy as np
 from tqdm import tqdm
+import numpy as np
 
 from utils.gpu_setup import is_main
 from utils.viz import plot_ecg
 from utils.eval_stats import compute_fid, compute_mmd
-
+from utils.runner_helpers import batch_to_device, stitch_12lead
 
 def eval_generation(nn, dataloader, args):
     show_progress = is_main()
@@ -17,33 +17,34 @@ def eval_generation(nn, dataloader, args):
         leave=False,
     )
     device = next(nn.parameters()).device
-
     real_features = []
     gen_features = []
-    num_viz = 10
+    num_viz = 30
+    num_leads = 7 if args.condition == "lead" else 12
 
     with torch.no_grad():
         for step, batch in enumerate(progress):
-            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-
-            if "trans_continuous" in args.neural_network or "mae" in args.neural_network:
-                signal = batch["signal"]
-                bsz = signal.shape[0]
+            report = batch["report"][0]
+            batch = {k: batch_to_device(v, device) for k, v in batch.items()}
+            
+            if args.objective in ["ddpm", "rectified_flow"]:
                 condition = batch["condition"] if args.condition else None
-
-                # Extract features from real data
-                real_feat = nn.get_features(signal, batch.get("padding_mask"))
+                bsz = batch["signal"].shape[0]
+                real_feat = nn.get_features(batch["signal"], batch.get("padding_mask"))
                 real_features.append(real_feat.cpu().numpy())
-
-                # Generate samples and extract features
-                generated = nn.sample((bsz, 12, 2500), device=device,
+                generated = nn.sample((bsz, num_leads, 2500), device=device,
                                       num_steps=nn.cfg.num_steps, condition=condition)
                 gen_feat = nn.get_features(generated)
                 gen_features.append(gen_feat.cpu().numpy())
-
-                # Visualize a few samples
                 if step < num_viz:
-                    plot_ecg(generated[0].detach().cpu().numpy(), title=f"gen_{step}")
+                    if args.condition == "lead":
+                        generated = stitch_12lead(args.condition_lead, condition, generated)
+                    plot_ecg(generated[0].detach().cpu().numpy(), file_name = step, 
+                             plot_title = report, save_dir=args.run_dir)
+
+            if step > 590:
+                break
+
 
     if not real_features:
         return {}

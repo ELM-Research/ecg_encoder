@@ -7,23 +7,35 @@ class Pretrain:
         self.args = args
 
     def __call__(self, transformed_data):
-        inputs = np.asarray(transformed_data["transformed_data"])
-        cond = transformed_data.get("cond")
         if self.args.data_representation == "bpe_symbolic":
-            return self.bpe_symbolic(inputs)
+            return self.bpe_symbolic(transformed_data,)
         elif self.args.data_representation == "signal":
-            return self.signal(inputs, cond)
+            return self.signal(transformed_data,)
 
-    def signal(self, inputs, cond=None):
+    def signal(self, transformed_data,):
+        inputs = np.asarray(transformed_data["transformed_data"])
+        if self.args.neural_network in ("mlae", "mtae", "st_mem"):
+            return {"series": inputs.astype(np.float32)}
         if self.args.objective == "autoregressive":
-            return {
+            out =  {
                 "signal": inputs,
             }
+        elif self.args.objective == "merl":
+            out =  {
+                "signal": inputs,
+            }
+            condition = transformed_data.get("condition")
+            out["condition"] = condition
         elif self.args.objective in ("rectified_flow", "ddpm"):
-            out = {"signal": inputs}
-            if cond is not None:
-                out["cond"] = cond
-            return out
+            out =  {
+                "signal": inputs,
+            }
+            if self.args.condition:
+                condition = transformed_data.get("condition")
+                out["condition"] = condition
+            if self.args.task in ["reconstruction", "generation"]:
+                out["report"] = transformed_data["report"]
+                out["12_lead_gt"] = transformed_data["12_lead_gt"]
         elif self.args.objective == "mae":
             # Each lead is a patch and we mask out 75% of them (9 leads)
             num_masked = int(self.args.num_patches * 0.75)
@@ -31,13 +43,15 @@ class Pretrain:
             visible_mask = np.ones(self.args.num_patches, dtype = np.float32)
             visible_mask[perm[:num_masked]] = 0
             targets = inputs.copy()
-            return {
+            out = {
                 "patches": inputs.astype(np.float32),
                 "visible_mask": visible_mask,
                 "targets": targets.astype(np.float32),
             }
+        return out
 
-    def bpe_symbolic(self, inputs):
+    def bpe_symbolic(self, transformed_data):
+        inputs = np.asarray(transformed_data["transformed_data"])
         labels = inputs.copy()
         if self.args.objective == "autoregressive":
             labels[labels == self.args.pad_id] = -100

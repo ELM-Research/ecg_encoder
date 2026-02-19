@@ -3,7 +3,7 @@ from tqdm import tqdm
 import wandb
 
 from utils.gpu_setup import is_main, train_dev_break
-
+from utils.runner_helpers import batch_to_device
 
 def run_train(
     nn,
@@ -30,7 +30,8 @@ def run_train(
     device = next(nn.parameters()).device
 
     for step, batch in enumerate(progress):
-        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        batch = {k: batch_to_device(v, device) for k, v in batch.items()}
+
         optimizer.zero_grad()
         out = nn(**batch)
         loss = out.loss
@@ -46,9 +47,9 @@ def run_train(
             ema.update()
         if getattr(args, "wandb", False) and is_main():
             wandb.log({"train/step_loss": loss.item(), "train/lr": optimizer.learning_rate, "epoch": epoch})
-        if checkpoint_manager and is_main():
-            if checkpoint_manager.save_step(step, total_steps_per_epoch):
-                checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_", ema=ema)
+        # if checkpoint_manager and is_main():
+        #     if checkpoint_manager.save_step(step, total_steps_per_epoch):
+        #         checkpoint_manager.save_checkpoint(nn, optimizer, epoch, step, prefix="step_", ema=ema)
         if train_dev_break(getattr(args, "dev", False), batch, loss.item()):
             break
         # if step > 4000:

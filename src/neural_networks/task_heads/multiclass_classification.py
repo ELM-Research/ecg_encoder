@@ -12,7 +12,7 @@ class ClassificationOutput:
     logits: Dict[str, torch.Tensor] = None
 
 
-class ClassificationHead(nn.Module):
+class MultiClassClassificationHead(nn.Module):
     def __init__(self, backbone: nn.Module, hidden_dim: int, labels: list[str]):
         super().__init__()
         self.backbone = backbone
@@ -28,18 +28,12 @@ class ClassificationHead(nn.Module):
 
     def forward(self, **kwargs):
         targets = {k: kwargs.pop(k) for k in list(kwargs.keys()) if k in self.labels}
-        if is_main():
-            print("kwargs", kwargs.keys())
-            print("targets", targets)
         with torch.no_grad():
             features = self.backbone.get_features(**kwargs)
-
         logits = {label: head(features) for label, head in self.heads.items()}
-
         loss = None
         if targets:
             loss = sum(self.loss_fn(logits[k], targets[k]) for k in targets)
-
         return ClassificationOutput(loss=loss, logits=logits)
 
     def train(self, mode: bool = True):

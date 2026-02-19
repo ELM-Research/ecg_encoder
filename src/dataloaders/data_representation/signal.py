@@ -1,38 +1,42 @@
 from typing import Tuple
 import numpy as np
+from transformers import AutoTokenizer
 
-from configs.constants import BATCH_LABEL_CATS
+from configs.constants import BATCH_LABEL_CATS, PTB_INDEPENDENT_IDX
 
 class Signal:
     def __init__(self, args):
         self.args = args
+        self.text_feature_extractor = AutoTokenizer.from_pretrained(self.args.text_feature_extractor) if self.args.text_feature_extractor else None
 
     def __call__(self, data):
         normalized_data = self.normalize(data["ecg"])
-        padded_data, padding_mask, modality_mask = self.pad(normalized_data)
-        labels = {}
+        padded_data, padding_mask = self.pad(normalized_data)
+        report = data.get("report", "")
+        result =  {
+            "transformed_data": padded_data,
+            "padding_mask": padding_mask,
+        }
         if self.args.batch_labels:
             for name, arr in data.items():
                 if name in BATCH_LABEL_CATS and name in self.args.batch_labels:
-                    labels[name] = arr
-        result = {
-            "transformed_data": padded_data,
-            "padding_mask": padding_mask,
-            "modality_mask": modality_mask,
-            **labels,
-        }
+                    result[name] = arr
 
-        cond_type = getattr(self.args, "cond_type", None)
-        if cond_type == "label":
-            label_name = self.args.cond_label_name
-            result["cond"] = np.int64(data[label_name])
-        elif cond_type == "text":
-            report = data.get("report", "")
-            max_len = getattr(self.args, "text_max_len", 512)
-            result["cond"] = self.encode_text(report, max_len)
-        elif cond_type == "lead":
-            result["cond"] = padded_data[self.args.cond_lead_index].astype(np.float32)
+        if self.args.condition:
+            if self.args.condition == "label":
+                label_name = self.args.condition_label
+                result["condition"] = np.int64(data[label_name])
+            elif self.args.condition == "lead":
+                result["condition"] = padded_data[self.args.condition_lead].astype(np.float32)
+                other = [i for i in PTB_INDEPENDENT_IDX if i != self.args.condition_lead]
+                result["transformed_data"] = padded_data[other]
 
+        if self.text_feature_extractor:
+            result["condition"] = self.encode_text(report, self.args.condition_text_max_len)
+                    
+        if self.args.task in ["reconstruction", "generation"]:
+            result["report"] = report
+            result["12_lead_gt"] = padded_data
         return result
 
     def pad(self, signals: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -42,22 +46,33 @@ class Signal:
         padded[:M, :valid_len] = signals[:, :valid_len]
 
         padding_mask = np.arange(self.args.segment_len) >= valid_len
-        modality_mask = np.arange(12) >= M
 
-        return padded, padding_mask, modality_mask
+        return padded, padding_mask
 
     def normalize(self, arr: np.ndarray):
-        mn = arr.min()
-        mx = arr.max()
-        denom = mx - mn + self.args.norm_eps
-        normalized_arr = np.clip((arr - mn) / denom, 0.0, 1.0)
-        return normalized_arr
-
-    @staticmethod
-    def encode_text(text, max_len: int = 512) -> np.ndarray:
-        if isinstance(text, (bytes, np.bytes_)):
-            text = text.decode("utf-8", errors="replace")
-        text = str(text)
-        encoded = [b + 1 for b in text.encode("utf-8")[:max_len]]
-        padded = encoded + [0] * (max_len - len(encoded))
-        return np.array(padded, dtype=np.int64)
+        if self.args.ecg_norm == "instance_minmax":
+            mn = arr.min()
+            mx = arr.max()
+            denom = mx - mn + self.args.norm_eps
+            return np.clip((arr - mn) / denom, 0.0, 1.0)
+        elif self.args.ecg_norm == "instance_zscore":
+            mean = arr.mean()
+            std = arr.std() + self.args.norm_eps
+            return (arr - mean) / std
+        elif self.args.ecg_norm == "lead_minmax":
+            mn = arr.min(axis=1, keepdims=True)
+            mx = arr.max(axis=1, keepdims=True)
+            denom = mx - mn + self.args.norm_eps
+            return np.clip((arr-mn) / denom, 0.0, 1.0)
+        elif self.args.ecg_norm == "lead_zscore":
+            mean = arr.mean(axis = 1, keepdims=True)
+            std = arr.std(axis=1, keepdims=True) + self.args.norm_eps
+            return (arr - mean) / std
+        else:
+            print("Please choose a normalization method")
+    
+    def encode_text(self, text, max_len: int = 128) -> np.ndarray:
+        tokenizer_out = self.text_feature_extractor(text = text, padding = "max_length", 
+                                                    max_length = max_len, truncation = True,
+                                                    return_tensors= "pt")
+        return {k: v.squeeze(0) for k, v in tokenizer_out.items()}

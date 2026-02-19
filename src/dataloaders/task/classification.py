@@ -16,7 +16,9 @@ class Classification:
     def signal(self, transformed_data):
         inputs = np.asarray(transformed_data["transformed_data"])
         labels = self.get_labels(transformed_data)
-        if self.args.objective in ("rectified_flow", "ddpm"):
+        if self.args.neural_network in ("mlae", "mtae", "st_mem"):
+            out = {"series": inputs.astype(np.float32)}
+        elif self.args.objective in ("rectified_flow", "ddpm"):
             padding_mask = transformed_data.get("padding_mask")
             out = {
                 "signal": inputs,
@@ -32,30 +34,58 @@ class Classification:
                 "patches": inputs.astype(np.float32),
                 "visible_mask": visible_mask,
             }
+
         out.update({k: torch.as_tensor(v, dtype=torch.long) for k, v in labels.items()})
         return out
-
+            
     def bpe_symbolic(self, transformed_data):
         inputs = np.asarray(transformed_data["transformed_data"])
         max_len = self.args.bpe_symbolic_len
         class_tokens = self.create_batch_tokens(transformed_data)
-        class_ids = np.array([getattr(self.args, tok) for tok in class_tokens])
+        # print("CLASS TOKENS", class_tokens)
+        class_ids = [getattr(self.args, tok) for tok in class_tokens]
+        # print("CLASS IDS", class_ids)
         inputs = inputs[:-1]
+        
+        # [eos, c1, eos, c2, eos, ...]
+        class_seq = [self.args.eos_id]
+        for cid in class_ids:
+            class_seq.extend([cid, self.args.eos_id])
+        class_seq = np.array(class_seq)
+        
+        inputs = inputs[:max_len - len(class_seq)]
+
         if "train" in self.args.mode:
-            inputs = inputs[: max_len - len(class_ids) - 2]
-            inputs = np.concatenate([inputs, [self.args.eos_id], class_ids, [self.args.eos_id]])
+            inputs = np.concatenate([inputs, class_seq])
+            
             if self.args.objective == "autoregressive":
-                num_masked = len(inputs) - len(class_ids) - 2
-                labels = np.concatenate([np.full(num_masked, fill_value=-100), [self.args.eos_id], class_ids, [self.args.eos_id]])
+                num_to_mask = len(inputs) - 3
+                labels = np.concatenate([
+                    np.full(num_to_mask, fill_value=-100),
+                    inputs[-3:]
+                ])
+            else:
+                labels = inputs
         else:
-            labels = np.concatenate([[self.args.eos_id], class_ids, [self.args.eos_id]])
+            # print("INPUTS SHAPE", inputs.shape)
+            # print("INPUTS LAST 10", inputs[-10:])
+            if len(class_ids) > 1:
+                inputs = np.concatenate([inputs, class_seq[:-2]])
+            labels = class_seq[-3:]
+
         inputs = torch.as_tensor(inputs, dtype=torch.long)
-        labels = torch.as_tensor(labels, dtype=torch.long) if labels is not None else None
+        labels = torch.as_tensor(labels, dtype=torch.long)
+
+        # print("INPUTS SHAPE", inputs.shape)
+        # print("INPUTS LAST 10", inputs[-10:])
+        # print("LABELS SHAPE", labels.shape)
+        # print("LABELS LAST 10", labels[-10:])
+        # input()
+
         if self.args.neural_network == "trans_discrete_decoder":
             return {"tgt_ids": inputs, "labels": labels}
         elif self.args.neural_network == "trans_discrete_encoder":
             return {"src_ids": inputs, "labels": labels}
-        
 
     def create_batch_tokens(
         self,

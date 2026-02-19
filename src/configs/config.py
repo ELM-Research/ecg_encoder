@@ -11,8 +11,8 @@ def get_args(mode: Mode) -> argparse.Namespace:
     parser.add_argument("--dev", action="store_true", default=None, help="Development mode")
 
     if mode in {"pretrain", "downstream_train", "downstream_eval"}:
-        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "classification", "translation", 
-                                                                       "forecasting", "generation", "reconstruction"])
+        parser.add_argument("--task", type=str, default=None, choices=["pretrain", "multilabel_classification", "translation", 
+                                                                       "forecasting", "generation", "reconstruction", "multiclass_classification"])
         parser.add_argument("--forecast_ratio", type=float, default=0.5, help="Please choose the percentage you want to forecast")
         parser.add_argument(
             "--data",
@@ -41,7 +41,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
             "--objective",
             type=str,
             default=None,
-            choices=["autoregressive", "mae", "mlm", "ddpm", "rectified_flow"],
+            choices=["autoregressive", "mae", "mlm", "ddpm", "rectified_flow", "merl", "mlae", "mtae", "st_mem",],
             help="Please choose the representation of data you want to input into the neural network.",
         )
         parser.add_argument("--patch_dim", type=int, default=2500, help="Please choose a patch dim that is evenly divisible by signal_len.")
@@ -71,6 +71,10 @@ def get_args(mode: Mode) -> argparse.Namespace:
                 "trans_continuous_nepa",
                 "trans_continuous_dit",
                 "mae_vit",
+                "merl",
+                "mlae",
+                "mtae",
+                "st_mem",
             ],
         )
         parser.add_argument(
@@ -102,6 +106,15 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--condition_text_max_len", type=int, default=128, help="Max text length for text conditioning (byte-level)")
         parser.add_argument("--text_feature_extractor", type=str, default=None,
                             help="HuggingFace model name for LLM text encoder")
+        parser.add_argument("--ecg_norm", type = str, default = "instance_minmax", 
+                            choices=["instance_minmax", "instance_zscore", "lead_minmax", "lead_zscore"], help = "choose the normalization method for the ECG")
+        parser.add_argument("--bfloat_16", action = "store_true", default = None)
+        parser.add_argument(
+            "--torch_compile",
+            action="store_true",
+            default=None,
+            help="Torch compile the model (should really only be used during pretraining or large finetuning.)",
+        )
     if "train" in mode:
         parser.add_argument("--epochs", type=int, default=1, help="Number of epochs")
         parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
@@ -124,11 +137,4 @@ def get_args(mode: Mode) -> argparse.Namespace:
         parser.add_argument("--grad_accum_steps", type=int, default=1)
         parser.add_argument("--grad_clip", type=float, default=0.0, help="Max gradient norm for clipping (0 to disable)")
         parser.add_argument("--scale_wd", type=str, default="none", choices=["none", "inv_sqrt", "inv_linear"])
-        parser.add_argument(
-            "--torch_compile",
-            action="store_true",
-            default=None,
-            help="Torch compile the model (should really only be used during pretraining or large finetuning.)",
-        )
-        parser.add_argument("--bfloat_16", action = "store_true", default = None)
     return parser.parse_args()

@@ -6,8 +6,6 @@ from typing import Optional
 from transformers import AutoModel
 
 from neural_networks.merl.blocks import AttentionPool2d, get_resnet
-from utils.gpu_setup import get_rank, get_world_size
-
 
 @dataclass
 class MerlConfig:
@@ -67,16 +65,13 @@ class Merl(nn.Module):
         out = self.resnet(signal)
         ecg_feat = self.downconv(out)
 
-        # CMA branch
         proj_ecg, _ = self.att_pool_head(ecg_feat)
         proj_ecg = proj_ecg.flatten(1)
 
-        # UMA branch
         ecg_pooled = self.avgpool(ecg_feat).flatten(1)
         ecg1 = self.dropout1(self.linear1(ecg_pooled))
         ecg2 = self.dropout2(self.linear2(ecg_pooled))
 
-        # Text branch (LM is frozen via requires_grad=False)
         with torch.no_grad():
             text_emb = self.lm(**condition).pooler_output
         proj_text = self.proj_t(text_emb)
@@ -87,6 +82,9 @@ class Merl(nn.Module):
         cma_loss = self.contrastive_loss(proj_ecg, proj_text)
         uma_loss = self.contrastive_loss(ecg1, ecg2)
         return MerlOutput(loss=cma_loss + uma_loss, out=out)
+    
+    def get_features(self, signal):
+        return self.resnet(signal)
 
     def _gather(self, *tensors):
         return tuple(torch.cat(torch.distributed.nn.all_gather(t), dim=0) for t in tensors)

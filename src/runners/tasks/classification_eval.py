@@ -50,7 +50,8 @@ def eval_classification(nn, dataloader, args):
                 elif args.task == "multilabel_classification":
                     logits = out.logits
                     preds = (logits > 0).int()
-                    targets = torch.stack([batch[k] for k in args.batch_labels], dim=-1)
+                    probs = torch.sigmoid(logits)
+                    labels = torch.stack([batch[k] for k in args.batch_labels], dim=-1)
                     
 
             all_preds.append(preds.cpu())
@@ -62,7 +63,6 @@ def eval_classification(nn, dataloader, args):
     all_labels = torch.cat(all_labels).numpy()
     
     if args.task == "multilabel_classification":
-        results = {}
         for i, label_name in enumerate(args.batch_labels):
             p, pr, l = all_preds[:, i], all_probs[:, i], all_labels[:, i]
             acc = accuracy(p, l)
@@ -70,16 +70,18 @@ def eval_classification(nn, dataloader, args):
             save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
             auroc = roc_auc(pr, l, save_dir)
             print(f"{label_name} — ROC AUC: {auroc:.4f} | Acc: {acc:.4f} | F1: {f1_score:.4f}")
-            results[label_name] = {"accuracy": acc, "f1": f1_score, "roc_auc": auroc}
-        return results
+
+        label_name = "_".join(args.batch_labels)
+        acc_mean = accuracy(all_preds.flatten(), all_labels.flatten())
+        f1_score_mean = f1(all_preds.flatten(), all_labels.flatten())
+        save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
+        auroc_mean = roc_auc(all_probs.flatten(), all_labels.flatten(), save_dir)
     else:
         label_name = args.batch_labels[-1]
-        acc = accuracy(all_preds, all_labels)
-        f1_score = f1(all_preds, all_labels)
+        acc_mean = accuracy(all_preds, all_labels)
+        f1_score_mean = f1(all_preds, all_labels)
         save_dir = f"{args.run_dir}/roc_auc_curve_{label_name}_{('_').join(args.data)}.png"
-        auroc = roc_auc(all_probs, all_labels, save_dir)
-        print(f"ROC AUC: {auroc:.4f} | Acc: {acc:.4f} | F1: {f1_score:.4f}")
-        return {"accuracy": acc, "f1": f1_score, "roc_auc": auroc}
+        auroc_mean = roc_auc(all_probs, all_labels, save_dir)
     
-    print(f"ROC AUC: {auroc:.4f} | Acc: {acc:.4f} | F1: {f1_score:.4f}")
-    return {"accuracy": acc, "f1": f1_score, "roc_auc": auroc}
+    print(f"MEAN ROC AUC: {auroc_mean:.4f} | MEAN Acc: {acc_mean:.4f} | MEAN F1: {f1_score_mean:.4f}")
+    return {"accuracy": acc_mean, "f1": f1_score_mean, "roc_auc": auroc_mean}

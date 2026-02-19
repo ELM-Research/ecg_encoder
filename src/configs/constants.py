@@ -5,12 +5,16 @@ from typing import Literal
 Mode = Literal["pretrain", "downstream_train", "downstream_eval"]
 
 ### Datasets
-BASE_DATASETS = {"ptb_xl", "mimic_iv", "code15", "cpsc", "csn", "batch10", "batch9", "batch11"}
+BASE_DATASETS = {"ptb_xl", "mimic_iv", "code15", "cpsc", "csn", "batch10", "batch9", "batch11",
+                 "batch12", "batch13", "batch14", "batch15", "batch16",
+                 "batch17", "batch18", "batch19", "batch20", "batch21"}
 
 ### CLassification
 BATCH_LABEL_CATS = {"v_pacing": [0,1], 
                    "lbbb": [0,1], 
-                   "qrs_dur_wide": [0,1]}
+                   "qrs_dur_wide": [0,1],
+                   "normal": [0,1],
+                   "noise": [0, 1]}
 
 # All allowed datasets, just add to the union
 ALLOWED_DATA = set().union(BASE_DATASETS)
@@ -23,9 +27,9 @@ RUNS_FOLDER = "src/runs"
 
 DATA_DIR = "../data"
 
-### ECG Lead Order (standard 12-lead)
-PTB_ORDER = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-
+PTB_ORDER = ["I", "II", "III", "aVL", "aVR", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+PTB_INDEPENDENT_LEADS = ["I", "II", "V1", "V2", "V3", "V4", "V5", "V6"]
+PTB_INDEPENDENT_IDX = [0,1,6,7,8,9,10,11]
 
 ### Models
 
@@ -49,6 +53,30 @@ TRANSFORMER_MODELS = {
 
 MAE_MODELS = {
     "mae_vit": {
+        "find_unused_parameters": False,
+    },
+}
+
+MERL_MODEL = {
+    "merl": {
+        "find_unused_parameters": False,
+    },
+}
+
+MLAE_MODELS = {
+    "mlae": {
+        "find_unused_parameters": False,
+    },
+}
+
+MTAE_MODELS = {
+    "mtae": {
+        "find_unused_parameters": False,
+    },
+}
+
+ST_MEM_MODELS = {
+    "st_mem": {
         "find_unused_parameters": False,
     },
 }
@@ -93,16 +121,6 @@ ECG_ENCODERS = {
         "model_hidden_size": None,
         "projection_dim": 128,
         "encoder_input_len": None,
-    },
-    "merl": {
-        "model": "resnet101",
-        "tokenizer": "ncbi/MedCPT-Query-Encoder",
-        "find_unused_parameters": True,
-        "strict": False,
-        "model_hidden_size": 256,
-        "projection_dim": 2048,
-        "spacial_dim": None,
-        "encoder_input_len": 64,
     },
     "st_mem": {
         "find_unused_parameters": False,
