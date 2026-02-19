@@ -6,6 +6,8 @@ Prepare datasets with [ecg_preprocess](https://github.com/ELM-Research/ecg_prepr
 > **Status:** Beta.
 
 ## Setup
+We use torch 2.9 with cuda 12.8 and primarily use H100 GPUs.
+
 
 ```bash
 git clone https://github.com/ELM-Research/ecg_encoder.git
