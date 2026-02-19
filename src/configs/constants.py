@@ -2,7 +2,7 @@ import re
 from typing import Literal
 
 ### Main arg MODE types
-Mode = Literal["pretrain", "downstream_train", "downstream_eval"]
+Mode = Literal["pretrain", "downstream_eval"]
 
 ### Datasets
 BASE_DATASETS = {"ptb_xl", "mimic_iv", "code15", "cpsc", "csn",}

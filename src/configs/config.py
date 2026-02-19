@@ -3,14 +3,14 @@ from configs.constants import Mode, ALLOWED_DATA
 
 
 def get_args(mode: Mode) -> argparse.Namespace:
-    if mode not in {"pretrain", "downstream_train", "downstream_eval"}:
+    if mode not in {"pretrain", "downstream_eval"}:
         raise ValueError(f"invalid mode: {mode}")
 
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument("--seed", type=int, default=0, help="Random Seed")
     parser.add_argument("--dev", action="store_true", default=None, help="Development mode")
 
-    if mode in {"pretrain", "downstream_train", "downstream_eval"}:
+    if mode in {"pretrain", "downstream_eval"}:
         parser.add_argument("--task", type=str, default=None, choices=["pretrain", "forecasting", "generation", "reconstruction"])
         parser.add_argument("--forecast_ratio", type=float, default=0.5, help="Please choose the percentage you want to forecast")
         parser.add_argument(
@@ -33,7 +33,7 @@ def get_args(mode: Mode) -> argparse.Namespace:
             "--data_representation",
             type=str,
             default=None,
-            choices=["signal", "rgb", "bpe_symbolic"],
+            choices=["signal", "bpe_symbolic"],
             help="Please choose the representation of data you want to input into the neural network.",
         )
         parser.add_argument(
