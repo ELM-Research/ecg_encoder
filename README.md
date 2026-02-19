@@ -1,8 +1,9 @@
 # ecg_encoder
 
 A research framework for pretraining and evaluating ECG neural networks. Supports multiple architectures, training objectives, and data representations with distributed training out of the box.
+Prepare datasets with [ecg_preprocess](https://github.com/ELM-Research/ecg_preprocess) before use.
 
-> **Status:** Beta. Prepare datasets with [ecg_preprocess](https://github.com/ELM-Research/ecg_preprocess) before use.
+> **Status:** Beta.
 
 ## Setup
 
@@ -11,7 +12,7 @@ git clone https://github.com/ELM-Research/ecg_encoder.git
 cd ecg_encoder && uv sync
 ```
 
-For BPE symbolic representation, compile the Rust tokenizer:
+For BPE symbolic representation with [ECG-Byte](https://arxiv.org/abs/2412.14373), compile the Rust tokenizer:
 
 ```bash
 cd src/dataloaders/data_representation/bpe
@@ -22,7 +23,7 @@ If Rust is not installed: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustu
 
 ## Data
 
-Set `DATA_DIR` in `src/configs/constants.py` to your preprocessed data directory.
+Set `DATA_DIR` in `src/configs/constants.py` to your preprocessed data directory which contains the one or more of the following subdirectories: `mimic_iv`, `ptb_xl`, `code15`, `cpsc`, `csn`. These can be preprocessed using the [ecg_preprocess](https://github.com/ELM-Research/ecg_preprocess) repository.
 
 | Dataset  | Key        |
 |----------|------------|
@@ -43,14 +44,14 @@ Set `DATA_DIR` in `src/configs/constants.py` to your preprocessed data directory
 
 | Model | `--neural_network` | `--objective` | Representation |
 |-------|--------------------|---------------|----------------|
-| DiT | `trans_continuous_dit` | `ddpm`, `rectified_flow` | `signal` |
-| NEPA | `trans_continuous_nepa` | `autoregressive` | `signal` |
+| [DiT](https://arxiv.org/abs/2212.09748) | `trans_continuous_dit` | `ddpm`, `rectified_flow` | `signal` |
+| [NEPA](https://arxiv.org/abs/2512.16922) | `trans_continuous_nepa` | `autoregressive` | `signal` |
 | Decoder Transformer | `trans_discrete_decoder` | `autoregressive` | `bpe_symbolic` |
-| MAE ViT | `mae_vit` | `mae` | `signal` |
-| MERL | `merl` | `merl` | `signal` |
-| MLAE | `mlae` | `mlae` | `signal` |
-| MTAE | `mtae` | `mtae` | `signal` |
-| ST-MEM | `st_mem` | `st_mem` | `signal` |
+| [MAE ViT](https://arxiv.org/abs/2111.06377) | `mae_vit` | `mae` | `signal` |
+| [MERL](https://arxiv.org/abs/2403.06659) | `merl` | `merl` | `signal` |
+| [MLAE](https://ieeexplore.ieee.org/document/9980411) | `mlae` | `mlae` | `signal` |
+| [MTAE](https://ieeexplore.ieee.org/document/9980411) | `mtae` | `mtae` | `signal` |
+| [ST-MEM](https://arxiv.org/abs/2402.09450) | `st_mem` | `st_mem` | `signal` |
 
 ## Usage
 
@@ -86,7 +87,7 @@ uv run torchrun --standalone --nproc_per_node=4 \
 
 ### Evaluate
 
-Generation (FID, MMD):
+Generation:
 
 ```bash
 uv run src/eval_encoder.py \
@@ -96,6 +97,18 @@ uv run src/eval_encoder.py \
     --objective rectified_flow \
     --neural_network trans_continuous_dit \
     --task generation --ema
+```
+
+Reconstruction:
+
+```bash
+uv run src/eval_encoder.py \
+    --data mimic_iv \
+    --nn_ckpt path/to/checkpoint.pt \
+    --data_representation signal \
+    --objective rectified_flow \
+    --neural_network trans_continuous_dit \
+    --task reconstruction --ema
 ```
 
 Forecasting:
