@@ -135,6 +135,16 @@ uv run src/eval_encoder.py \
 ... --condition text --text_feature_extractor Qwen/Qwen3-0.6B
 ```
 
+### Examples
+
+Text-conditioned 12-lead ECG generation (DiT + DDPM):
+
+![Generation example](assets/generation_example.png)
+
+ECG forecasting (decoder transformer + BPE tokens, 50% context):
+
+![Forecast example](assets/forecast_example.png)
+
 ### Key Flags
 
 | Flag | Description |

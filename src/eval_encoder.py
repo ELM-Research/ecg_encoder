@@ -45,8 +45,7 @@ def main():
 
     eval_fn = TASK_RUNNERS[args.task]
 
-    # seeds = [0, 1, 2, 3, 4]
-    seeds = [0, 1]
+    seeds = [0, 1, 2, 3, 4]
     all_metrics = []
     for seed in seeds:
         args.seed = seed
