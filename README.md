@@ -1,4 +1,4 @@
-# ecg_encoder
+# ECG Neural Networks
 
 A research framework for pretraining and evaluating ECG neural networks. Supports multiple architectures, training objectives, and data representations with distributed training out of the box.
 Prepare datasets with [ecg_preprocess](https://github.com/ELM-Research/ecg_preprocess) before use.
