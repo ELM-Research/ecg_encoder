@@ -2,7 +2,7 @@
 
 ## Project
 
-ecg_encoder is a research framework for pretraining and evaluating ECG neural networks. The audience is ML researchers iterating on ECG representation learning.
+ecg_nn is a research framework for pretraining and evaluating ECG neural networks. The audience is ML researchers iterating on ECG representation learning.
 
 ## Philosophy
 
