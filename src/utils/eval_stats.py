@@ -101,9 +101,14 @@ def forecast_metrics(pred: np.ndarray, gt: np.ndarray) -> dict:
     if n == 0:
         return {k: float("nan") for k in ("mse", "mae", "pearson_r", "snr_db")}
     p, g = pred[:n].astype(np.float64), gt[:n].astype(np.float64)
-    err = p - g
-    mse = float(np.mean(err**2))
-    mae = float(np.mean(np.abs(err)))
+    rng = g.max() - g.min()
+    if rng > 0:
+        p_n, g_n = (p - g.min()) / rng, (g - g.min()) / rng
+    else:
+        p_n, g_n = p - g.min(), g - g.min()
+    err_n = p_n - g_n
+    mse = float(np.mean(err_n**2))
+    mae = float(np.mean(np.abs(err_n)))
     r = float(np.corrcoef(p, g)[0, 1]) if p.std() > 0 and g.std() > 0 else 0.0
-    snr = float(10 * np.log10(np.mean(g**2) / mse)) if mse > 0 else float("inf")
+    snr = float(10 * np.log10(np.mean(g**2) / np.mean((p - g)**2))) if np.mean((p - g)**2) > 0 else float("inf")
     return {"mse": mse, "mae": mae, "pearson_r": r if not np.isnan(r) else 0.0, "snr_db": snr}
