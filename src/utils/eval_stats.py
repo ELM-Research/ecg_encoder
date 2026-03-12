@@ -96,19 +96,16 @@ def compute_reconstruction_metrics(pred: torch.Tensor, target: torch.Tensor, sf:
     ssim = compute_ssim_1d(pred, target, window_size=ssim_window_size(sf))
     return {"mse": mse, "mae": mae, "psnr": psnr, "ssim": ssim}
 
-def forecast_metrics(pred: np.ndarray, gt: np.ndarray) -> dict:
+def forecast_metrics(pred: np.ndarray, gt: np.ndarray, context: np.ndarray | None = None) -> dict:
     n = min(len(pred), len(gt))
     if n == 0:
-        return {k: float("nan") for k in ("mse", "mae", "pearson_r", "snr_db")}
+        return {k: float("nan") for k in ("mse", "mae", "mase", "pearson_r", "snr_db")}
     p, g = pred[:n].astype(np.float64), gt[:n].astype(np.float64)
-    rng = g.max() - g.min()
-    if rng > 0:
-        p_n, g_n = (p - g.min()) / rng, (g - g.min()) / rng
-    else:
-        p_n, g_n = p - g.min(), g - g.min()
-    err_n = p_n - g_n
-    mse = float(np.mean(err_n**2))
-    mae = float(np.mean(np.abs(err_n)))
+    err = p - g
+    mse = float(np.mean(err**2))
+    mae = float(np.mean(np.abs(err)))
+    naive_mae = float(np.mean(np.abs(np.diff(context.astype(np.float64))))) if context is not None and len(context) > 1 else float("nan")
+    mase = mae / naive_mae if naive_mae > 0 else float("nan")
     r = float(np.corrcoef(p, g)[0, 1]) if p.std() > 0 and g.std() > 0 else 0.0
-    snr = float(10 * np.log10(np.mean(g**2) / np.mean((p - g)**2))) if np.mean((p - g)**2) > 0 else float("inf")
-    return {"mse": mse, "mae": mae, "pearson_r": r if not np.isnan(r) else 0.0, "snr_db": snr}
+    snr = float(10 * np.log10(np.mean(g**2) / np.mean(err**2))) if np.mean(err**2) > 0 else float("inf")
+    return {"mse": mse, "mae": mae, "mase": mase, "pearson_r": r if not np.isnan(r) else 0.0, "snr_db": snr}
