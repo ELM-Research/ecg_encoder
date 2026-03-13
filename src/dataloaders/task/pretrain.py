@@ -57,7 +57,7 @@ class Pretrain:
         labels[labels == self.args.bos_id] = -100
         inputs = torch.as_tensor(inputs, dtype=torch.long)
         labels = torch.as_tensor(labels, dtype=torch.long) if labels is not None else None
-        return {
-            "tgt_ids": inputs,
-            "labels": labels,
-        }
+        out = {"tgt_ids": inputs, "labels": labels}
+        if getattr(self.args, "signal_head", False):
+            out["signal"] = torch.as_tensor(transformed_data["signal"], dtype=torch.float32)
+        return out
